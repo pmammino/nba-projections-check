@@ -37,6 +37,20 @@ URLS = {"mean": BASE + "projections.php?type=today&pos=ALL",
         "floor": BASE + "projections-ceil-floor.php?type=today&pos=ALL&ceilFloor=F"}
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; nba-paper-trading/1.0)", "Accept": "application/json,*/*"}
 
+# A game has ~25-30 players on the sheet. Fewer than this per team means the feed came back truncated
+# (a live run got only the first handful of players alphabetically) and pricing off it would silently
+# drop almost every player.
+MIN_PLAYERS_PER_TEAM = int(os.environ.get("PAPER_MIN_FEED_PLAYERS_PER_TEAM", "8"))
+
+
+def request_headers():
+    """Browser-like headers, plus a session cookie when ROTOWIRE_COOKIE is set (for a feed that only
+    returns the full table to a logged-in subscriber)."""
+    h = dict(HEADERS)
+    if os.environ.get("ROTOWIRE_COOKIE"):
+        h["Cookie"] = os.environ["ROTOWIRE_COOKIE"]
+    return h
+
 # our stat -> feed column (lower-cased). dd/td are probabilities, not counts.
 COLUMNS = {"pts": "pts", "reb": "reb", "ast": "ast", "threes": "threepm", "stl": "stl", "blk": "blk",
            "tov": "to", "threesa": "threepa", "fgm": "fgm", "fga": "fga", "ftm": "ftm", "fta": "fta",
@@ -72,18 +86,37 @@ def parse_feed(payload):
     return out
 
 
-def fetch_snapshot(session=None):
-    """Pull all three feeds -> {pid: row}, each stat as mean / lo / hi."""
+def fetch_raw(session=None):
+    """The three feeds, parsed: {mean|floor|ceil: {pid: row}}."""
     if session is None:
         import requests
         session = requests.Session()
     raw = {}
     for key, url in URLS.items():
-        res = session.get(url, headers=HEADERS, timeout=60)
+        res = session.get(url, headers=request_headers(), timeout=60)
         if not res.ok:
             raise RuntimeError(f"RotoWire HTTP {res.status_code} for the {key} feed")
         raw[key] = parse_feed(res.json())
+    return raw
+
+
+def fetch_snapshot(session=None):
+    """Pull all three feeds -> {pid: row}, each stat as mean / lo / hi."""
+    raw = fetch_raw(session)
     return build_snapshot(raw["mean"], raw["floor"], raw["ceil"])
+
+
+def check_coverage(snap, teams, minimum=None):
+    """Problems (empty list = fine) with a snapshot for the teams about to be priced: a team with
+    fewer than `minimum` players means a truncated feed, and the capture must stop rather than save
+    a board that prices a handful of players."""
+    minimum = MIN_PLAYERS_PER_TEAM if minimum is None else minimum
+    per = {}
+    for r in snap.values():
+        per[r["team"]] = per.get(r["team"], 0) + 1
+    return [f"RotoWire feeds list only {per.get(t, 0)} players for {t} (expected at least {minimum}); "
+            f"the feed is truncated or needs subscriber access (set ROTOWIRE_COOKIE)"
+            for t in sorted(teams) if per.get(t, 0) < minimum]
 
 
 def build_snapshot(mean, floor, ceil):

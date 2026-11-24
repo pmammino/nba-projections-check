@@ -42,6 +42,9 @@ ALIASES = {
 }
 
 
+MIN_ROWS = 250          # the league has ~500 players on the sheet; 7 came back once from a truncated feed
+
+
 def parse_preseason(payload) -> pd.DataFrame:
     rows = payload.get("data") if isinstance(payload, dict) else payload
     if not isinstance(rows, list) or not rows:
@@ -65,14 +68,20 @@ def parse_preseason(payload) -> pd.DataFrame:
     for c in num[1:]:
         out[c] = out[c].fillna(0.0)
     out["team"] = out["team"].map(lambda t: canon(t) if isinstance(t, str) and t.strip() else None)
-    return out.drop_duplicates("newsid").reset_index(drop=True)
+    out = out.drop_duplicates("newsid").reset_index(drop=True)
+    if len(out) < MIN_ROWS:
+        raise ValueError(f"RotoWire preseason sheet has only {len(out)} players (expected at least {MIN_ROWS}): "
+                         f"the response is truncated or needs subscriber access (set ROTOWIRE_COOKIE). "
+                         f"First players: {', '.join((out['lastname'].head(5)).astype(str))}")
+    return out
 
 
 def fetch_preseason(session=None, url: str = URL) -> pd.DataFrame:
     if session is None:
         import requests
         session = requests.Session()
-    res = session.get(url, headers=HEADERS, timeout=60)
+    from .feeds import request_headers
+    res = session.get(url, headers=request_headers(), timeout=60)
     if not res.ok:
         raise RuntimeError(f"RotoWire HTTP {res.status_code} for the preseason sheet")
     try:

@@ -111,8 +111,15 @@ def cmd_check_feeds(a):
     """First live check of the price source: what the three RotoWire feeds returned, and
     whether the fitted distribution reproduces each published floor/ceiling."""
     from . import dist, feeds
-    snap = feeds.fetch_snapshot()
-    print(f"{len(snap)} players with all three feeds")
+    raw = feeds.fetch_raw()
+    print("rows per feed:", {k: len(v) for k, v in raw.items()})
+    snap = feeds.build_snapshot(raw["mean"], raw["floor"], raw["ceil"])
+    per = {}
+    for r in snap.values():
+        per[r["team"]] = per.get(r["team"], 0) + 1
+    thin = {t: n for t, n in per.items() if n < feeds.MIN_PLAYERS_PER_TEAM}
+    print(f"{len(snap)} players with all three feeds across {len(per)} teams"
+          + (f"; THIN teams (feed looks truncated): {thin}" if thin else ""))
     book = feeds.FeedBook(snap)
     bad = tot = 0
     for pid, r in snap.items():

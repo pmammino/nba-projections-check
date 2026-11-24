@@ -559,3 +559,26 @@ def test_if_upcoming_has_nothing_the_dated_routes_still_run(tmp_path):
     from paper.capture import list_fixtures
     got = list_fixtures(client, DAY)                                   # FakeOptic.get_fixtures still serves its game
     assert got and got[0]["id"] == FX
+
+
+def test_a_truncated_feed_stops_the_capture_and_writes_nothing(tmp_path):
+    """Live: the feed came back with a handful of players; the capture priced one player and saved it.
+    Now it stops, says why, and leaves no half-empty board behind."""
+    pre = preseason()
+    client = FakeOptic(pre, {"final": False})
+
+    class Truncated(FakeSession):
+        def get(self, url, headers=None, timeout=None):
+            r = super().get(url, headers, timeout)
+            full = r.json()
+            class R:
+                ok, status_code, text = True, 200, ""
+                def json(self_):
+                    return full[:3] if "type=pre" not in url else full     # only the preseason sheet is intact
+            return R()
+
+    logs = []
+    errs = A.auto(tmp_path, client, now=at(15, 30), log=logs.append, session=Truncated(pre), price_model="feeds")
+    assert any("capture morning" in e and "truncated or needs subscriber access" in e for e in errs)
+    assert store.board_slots(tmp_path, DAY) == []                               # nothing saved
+    assert not (tmp_path / "feeds" / DAY / "morning.csv").exists()
