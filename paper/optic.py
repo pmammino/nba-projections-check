@@ -156,6 +156,12 @@ class OpticOddsClient:
                                           "start_date": start_date, "end_date": end_date,
                                           "status": status})
 
+    def get_active_fixtures(self, start_date=None, end_date=None, sport="basketball", league="nba"):
+        """/fixtures/active: upcoming and live fixtures. The natural endpoint for "what can I bet
+        on", tried when /fixtures with a status filter returns nothing."""
+        return self.get_all("/fixtures/active", {"sport": sport, "league": league,
+                                                 "start_date": start_date, "end_date": end_date})
+
     # ---- odds ------------------------------------------------------------
     def _fan_out(self, endpoint, fixture_ids, sportsbooks, markets, per_fixture, on_progress):
         if not fixture_ids:

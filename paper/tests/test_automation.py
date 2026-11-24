@@ -359,12 +359,12 @@ def test_an_empty_or_filtered_slate_explains_itself(tmp_path):
     logs = []
     A.auto(tmp_path, client, now=at(18, 45), log=logs.append, session=FakeSession(pre))
     text = "\n".join(logs)
-    assert "API returned 3, 0 in slate window" in text and "status=postponed" in text and "unparseable" in text and "live" in text
+    assert "3 returned" in text and "0 in slate window" in text and "status=postponed" in text and "unparseable" in text and "live" in text
     assert "due: nothing" in text
     client.get_fixtures = lambda **k: []
     logs.clear()
     A.auto(tmp_path, client, now=at(18, 45), log=logs.append, session=FakeSession(pre))
-    assert "API returned 0, 0 in slate window" in "\n".join(logs)
+    assert "0 returned" in "\n".join(logs)
 
 
 def test_the_exact_window_is_applied_locally_whatever_the_api_returns(tmp_path):
@@ -386,7 +386,51 @@ def test_the_exact_window_is_applied_locally_whatever_the_api_returns(tmp_path):
     assert seen == {"start": "2026-11-24", "end": "2026-11-26", "status": "unplayed"}
 
 
-def test_a_status_the_api_rejects_falls_back_to_unfiltered(tmp_path):
+def test_if_the_status_filter_returns_nothing_the_other_routes_are_tried(tmp_path):
+    """Live evidence: ?status=unplayed returned 0 while the unfiltered call returned games."""
+    pre = preseason()
+    client = FakeOptic(pre, {"final": False})
+    calls = []
+    def get_fixtures(start_date=None, end_date=None, status=None, **k):
+        calls.append(("fixtures", status))
+        if status is not None:
+            return []                                                     # silently nothing for this status
+        return [{"id": "G1", "start_date": "2026-11-25T00:30:00Z", "status": "scheduled"},     # a status we did not send
+                {"id": "OLD", "start_date": "2026-11-25T00:30:00Z", "status": "completed"}]
+    client.get_fixtures = get_fixtures
+    client.get_active_fixtures = lambda **k: calls.append(("active", None)) or []
+    logs = []
+    from paper.capture import list_fixtures
+    assert [f["id"] for f in list_fixtures(client, DAY, logs.append)] == ["G1"]
+    assert calls == [("fixtures", "unplayed"), ("active", None), ("fixtures", None)]
+    text = "\n".join(logs)
+    assert "via fixtures?status=unplayed" in text and "via active" in text and "dropped {'status=completed': 1}" in text
+
+
+def test_the_active_endpoint_is_used_when_it_has_the_games(tmp_path):
+    pre = preseason()
+    client = FakeOptic(pre, {"final": False})
+    client.get_fixtures = lambda **k: []
+    client.get_active_fixtures = lambda **k: [{"id": "A1", "start_date": "2026-11-25T00:30:00Z", "status": "unplayed"}]
+    from paper.capture import list_fixtures
+    assert [f["id"] for f in list_fixtures(client, DAY)] == ["A1"]
+
+
+def test_when_every_route_is_empty_the_log_says_what_each_returned(tmp_path):
+    pre = preseason()
+    client = FakeOptic(pre, {"final": False})
+    client.get_fixtures = lambda **k: ([{"id": "X", "start_date": "2026-11-23T01:00:00Z", "status": "completed"}] if "status" not in k else [])
+    client.get_active_fixtures = lambda **k: (_ for _ in ()).throw(RuntimeError("HTTP 404"))
+    logs = []
+    from paper.capture import list_fixtures
+    assert list_fixtures(client, DAY, logs.append) == []
+    text = "\n".join(logs)
+    assert "via active: failed (HTTP 404)" in text
+    assert "1 returned, statuses {'completed': 1}, starts 2026-11-23T01:00Z..2026-11-23T01:00Z" in text
+    assert "outside the slate window" in text
+
+
+def test_a_status_the_api_rejects_does_not_stop_the_other_routes(tmp_path):
     pre = preseason()
     client = FakeOptic(pre, {"final": False})
     calls = []
@@ -399,4 +443,4 @@ def test_a_status_the_api_rejects_falls_back_to_unfiltered(tmp_path):
     logs = []
     from paper.capture import list_fixtures
     assert [f["id"] for f in list_fixtures(client, DAY, logs.append)] == ["A"]
-    assert calls == ["unplayed", None] and any("rejected" in l for l in logs)
+    assert calls == ["unplayed", None] and any("failed (HTTP 400" in l for l in logs)

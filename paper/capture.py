@@ -41,44 +41,75 @@ def _parse_start(f):
         return None
 
 
+UPCOMING = {"unplayed", "scheduled", "upcoming", "not_started", "notstarted", "pre", "pregame", ""}
+FINISHED = {"completed", "final", "finished", "ended"}
+
+
+def _describe(raw):
+    """What an API response looked like, for the log: count, statuses seen, start-date range."""
+    starts = sorted(str(f.get("start_date", ""))[:16] for f in raw if f.get("start_date"))
+    statuses = {}
+    for f in raw:
+        statuses[str(f.get("status"))] = statuses.get(str(f.get("status")), 0) + 1
+    rng = f", starts {starts[0]}Z..{starts[-1]}Z" if starts else ""
+    return f"{len(raw)} returned, statuses {statuses}{rng}"
+
+
 def fixtures_in_window(client, date, status, log=None):
     """Fixtures of one slate day with the given status: [{id, start (datetime UTC), status}].
 
     The slate day is [date 10:00Z, date+1 10:00Z) so that US evening tips (which cross UTC
-    midnight) belong to the right day. The API is asked for a WIDER, date-level range and the
-    exact window is applied here: a live run returned last night's finished games for a
-    time-of-day window, so the API's own handling of the time part is not trusted. When `log` is
-    given it says what came back and why anything was dropped, so an empty slate explains itself."""
+    midnight) belong to the right day. The window and the status are enforced HERE, on whatever
+    the API returns, because live runs showed the API does not do what its parameters suggest:
+    a time-of-day range returned last night's finished games, and status=unplayed returned nothing.
+
+    So several routes are tried in turn, and the first that yields a usable fixture wins:
+      upcoming  /fixtures?status=unplayed, then /fixtures/active, then /fixtures unfiltered
+      completed /fixtures?status=completed, then /fixtures unfiltered
+    Every attempt is logged with what it returned (count, statuses, start-date range), so a day with
+    no fixtures says whether the games are missing or the query is wrong."""
     lo = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=timezone.utc) + timedelta(hours=10)
     hi = lo + timedelta(days=1)
-    d0 = date
-    d2 = (lo + timedelta(days=2)).strftime("%Y-%m-%d")
-    try:
-        raw = client.get_fixtures(start_date=d0, end_date=d2, status=status)
-    except Exception as err:        # a status value the API rejects must not blind us: retry unfiltered
-        if log:
-            log(f"  fixtures: status={status!r} was rejected ({err}); retrying without it")
-        raw = client.get_fixtures(start_date=d0, end_date=d2)
-    out, dropped = [], {}
-    for f in raw:
-        why, start = None, _parse_start(f)
-        if not f.get("id"):
-            why = "no id"
-        elif start is None:
-            why = f"unparseable start_date={f.get('start_date')!r}"
-        elif not lo <= start < hi:
-            why = "outside the slate window"
-        elif status == "unplayed" and f.get("is_live"):
-            why = "live"
-        elif status and str(f.get("status", "")).lower() not in (status, "scheduled", ""):
-            why = f"status={f.get('status')}"
-        if why:
-            dropped[why] = dropped.get(why, 0) + 1
-        else:
-            out.append({"id": f["id"], "start": start, "status": f.get("status")})
-    if log:
-        log(f"  fixtures {d0}..{d2} status={status}: API returned {len(raw)}, {len(out)} in slate window "
-            f"[{lo:%m-%d %H:%MZ}, {hi:%m-%d %H:%MZ})" + (f"; dropped {dropped}" if dropped else ""))
+    d0, d2 = date, (lo + timedelta(days=2)).strftime("%Y-%m-%d")
+    want = UPCOMING if status == "unplayed" else FINISHED
+    routes = ([("fixtures", "unplayed"), ("active", None), ("fixtures", None)] if status == "unplayed"
+              else [("fixtures", status), ("fixtures", None)])
+    note = log or (lambda *_: None)
+    out = []
+    for kind, st in routes:
+        try:
+            if kind == "active":
+                if not hasattr(client, "get_active_fixtures"):
+                    continue
+                raw = client.get_active_fixtures(start_date=d0, end_date=d2)
+            else:
+                raw = client.get_fixtures(start_date=d0, end_date=d2, **({"status": st} if st else {}))
+        except Exception as err:
+            note(f"  fixtures via {kind}{'?status=' + st if st else ''}: failed ({err})")
+            continue
+        out, dropped = [], {}
+        for f in raw:
+            why, start = None, _parse_start(f)
+            state = str(f.get("status", "")).lower()
+            if not f.get("id"):
+                why = "no id"
+            elif start is None:
+                why = f"unparseable start_date={f.get('start_date')!r}"
+            elif not lo <= start < hi:
+                why = "outside the slate window"
+            elif status == "unplayed" and f.get("is_live"):
+                why = "live"
+            elif state not in want:
+                why = f"status={f.get('status')}"
+            if why:
+                dropped[why] = dropped.get(why, 0) + 1
+            else:
+                out.append({"id": f["id"], "start": start, "status": f.get("status")})
+        note(f"  fixtures via {kind}{'?status=' + st if st else ''} {d0}..{d2}: {_describe(raw)}; "
+             f"{len(out)} in slate window [{lo:%m-%d %H:%MZ}, {hi:%m-%d %H:%MZ})"
+             + (f"; dropped {dropped}" if dropped else ""))
+        if out:
+            break
     return sorted(out, key=lambda x: x["start"])
 
 
