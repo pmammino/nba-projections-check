@@ -1,2 +1,6 @@
 date,persona,slot,player_id,name,team,opp,stat,book,line,side,odds,implied,fair,our_prob,edge,model_edge,p_sharp,n_books,stake_units,scaled_by,bankroll_before,status,actual,pnl_units,close_fair,clv
-2026-11-24,disciplined,morning,5159,Desmond Bane,ORL,DET,reb,draftkings,7.5,over,1220.0,0.0758,0.0708,0.1682,0.09239999999999998,0.09739999999999999,,5,1.0,1.0,100.0,pending,,,,
+2026-11-24,disciplined,morning,6249,Zaccharie Risacher,DAL,DEN,threes,draftkings,0.5,under,170.0,0.3704,0.3476,0.5435,0.17309999999999998,0.19589999999999996,,7,1.0,1.0,100.0,pending,,,,
+2026-11-24,disciplined,morning,4931,Caleb Martin,DAL,DEN,pts,draftkings,5.5,under,-109.0,0.5215,0.4917,0.6739,0.1524000000000001,0.18220000000000003,,7,1.0,1.0,100.0,pending,,,,
+2026-11-24,disciplined,morning,6925,AJ Dybantsa,WAS,BOS,pts,draftkings,15.5,under,-101.0,0.5025,0.4732,0.6374,0.13490000000000002,0.16419999999999996,0.4694,6,1.0,1.0,100.0,pending,,,,
+2026-11-24,disciplined,morning,5945,Bilal Coulibaly,WAS,BOS,threes,draftkings,0.5,under,122.0,0.4505,0.422,0.5685,0.118,0.14650000000000002,,6,1.0,1.0,100.0,pending,,,,
+2026-11-24,disciplined,morning,5159,Desmond Bane,ORL,DET,reb,draftkings,7.5,over,1220.0,0.0758,0.0709,0.1682,0.09239999999999998,0.09729999999999998,,5,1.0,1.0,100.0,pending,,,,
