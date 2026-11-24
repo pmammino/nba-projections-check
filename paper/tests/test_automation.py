@@ -363,7 +363,7 @@ def test_an_empty_or_filtered_slate_explains_itself(tmp_path):
     assert "due: nothing" in text
     client.get_fixtures = lambda **k: []
     logs.clear()
-    A.auto(tmp_path, client, now=at(18, 45), log=logs.append, session=FakeSession(pre))
+    A.auto(tmp_path / "fresh", client, now=at(18, 45), log=logs.append, session=FakeSession(pre))   # a fresh root: not throttled
     assert "0 returned" in "\n".join(logs)
 
 
@@ -444,3 +444,54 @@ def test_a_status_the_api_rejects_does_not_stop_the_other_routes(tmp_path):
     from paper.capture import list_fixtures
     assert [f["id"] for f in list_fixtures(client, DAY, logs.append)] == ["A"]
     assert calls == ["unplayed", None] and any("failed (HTTP 400" in l for l in logs)
+
+
+def test_an_empty_answer_is_not_asked_again_for_30_minutes(tmp_path):
+    pre = preseason()
+    client = FakeOptic(pre, {"final": False})
+    calls = []
+    client.get_fixtures = lambda **k: calls.append(1) or []
+    client.get_active_fixtures = lambda **k: []
+    logs = []
+    A.auto(tmp_path, client, now=at(19, 0), log=logs.append, session=FakeSession(pre))
+    n = len(calls)
+    assert n >= 2                                                           # several routes on the first, empty, probe
+    A.auto(tmp_path, client, now=at(19, 15), log=logs.append, session=FakeSession(pre))
+    assert len(calls) == n and any("asking again after 19:30Z" in l for l in logs)     # throttled: no new requests
+    A.auto(tmp_path, client, now=at(19, 31), log=logs.append, session=FakeSession(pre))
+    assert len(calls) > n                                                   # window passed: asks again
+    # as soon as games exist the throttle clears
+    client.get_fixtures = lambda **k: [{"id": "A", "start_date": "2026-11-25T00:30:00Z", "status": "unplayed"}]
+    A.auto(tmp_path, client, now=at(20, 5), log=logs.append, session=FakeSession(pre))
+    assert not (tmp_path / "inputs" / "fixtures_probe.json").exists()
+
+
+def test_the_probe_with_no_date_filter_is_the_last_resort_and_is_logged(tmp_path):
+    pre = preseason()
+    client = FakeOptic(pre, {"final": False})
+    client.get_fixtures = lambda **k: []
+    seen = []
+    def active(start_date=None, end_date=None):
+        seen.append((start_date, end_date))
+        return [] if start_date else [{"id": "NEXT", "start_date": "2026-11-27T00:30:00Z", "status": "unplayed"}]
+    client.get_active_fixtures = active
+    logs = []
+    from paper.capture import list_fixtures
+    assert list_fixtures(client, DAY, logs.append) == []                    # not in the slate window ...
+    assert seen[-1] == (None, None)                                         # ... but the probe asked for everything
+    assert any("active-any-date" in l and "starts 2026-11-27T00:30Z" in l for l in logs)   # ... and the log shows when the next game is
+
+
+def test_unchanged_outputs_are_not_rewritten(tmp_path):
+    import time
+    from paper import export
+    seed = __import__("test_pipeline").seed_day
+    seed(tmp_path, "2026-11-24", closing_line=24.5)
+    A.write_report(tmp_path)
+    out = export.export_site(tmp_path)
+    before = {p: p.read_bytes() for p in list(out.rglob("*.json")) + [tmp_path / "report.md"]}
+    time.sleep(1.1)                                                         # generatedAt / "Updated" would differ
+    A.write_report(tmp_path)
+    export.export_site(tmp_path)
+    after = {p: p.read_bytes() for p in before}
+    assert before == after                                                  # byte-identical: no commit on the data branch

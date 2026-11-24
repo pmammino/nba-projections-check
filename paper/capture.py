@@ -72,16 +72,19 @@ def fixtures_in_window(client, date, status, log=None):
     hi = lo + timedelta(days=1)
     d0, d2 = date, (lo + timedelta(days=2)).strftime("%Y-%m-%d")
     want = UPCOMING if status == "unplayed" else FINISHED
-    routes = ([("fixtures", "unplayed"), ("active", None), ("fixtures", None)] if status == "unplayed"
-              else [("fixtures", status), ("fixtures", None)])
+    routes = ([("fixtures", "unplayed"), ("active", None), ("fixtures", None), ("active-any-date", None)]
+              if status == "unplayed" else [("fixtures", status), ("fixtures", None)])
     note = log or (lambda *_: None)
     out = []
     for kind, st in routes:
         try:
-            if kind == "active":
+            if kind in ("active", "active-any-date"):
                 if not hasattr(client, "get_active_fixtures"):
                     continue
-                raw = client.get_active_fixtures(start_date=d0, end_date=d2)
+                # active-any-date is a PROBE: every upcoming/live NBA fixture, whatever its date, so the
+                # log shows the nearest scheduled game when nothing is posted for the slate day.
+                raw = (client.get_active_fixtures(start_date=d0, end_date=d2) if kind == "active"
+                       else client.get_active_fixtures())
             else:
                 raw = client.get_fixtures(start_date=d0, end_date=d2, **({"status": st} if st else {}))
         except Exception as err:
