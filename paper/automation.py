@@ -72,9 +72,22 @@ def _morning_open(now, tip, hour):
     return day + timedelta(hours=hour)
 
 
+MIN_PLAYERS_PER_FIXTURE = 6      # a game's props cover ~10-14 players; fewer means a partial capture
+MIN_LOG_PLAYERS = 100            # a season of box scores covers hundreds of players
+MIN_SIM_PLAYERS = 100            # so does a day's simulation
+
+
 def captured_fixtures(root, date):
-    return {slot: {str(r["fixture_id"]) for r in (store.load_board(root, date, slot) or [])}
-            for slot in store.board_slots(root, date)}
+    """{slot: fixtures captured}. A fixture only counts once it has a real number of players on the
+    board: a first run that matched a single player left that game with one row, the scheduler called
+    it captured, and it was never redone."""
+    out = {}
+    for slot in store.board_slots(root, date):
+        players = {}
+        for r in store.load_board(root, date, slot) or []:
+            players.setdefault(str(r["fixture_id"]), set()).add(r.get("player_id"))
+        out[slot] = {fx for fx, p in players.items() if len(p) >= MIN_PLAYERS_PER_FIXTURE}
+    return out
 
 
 # ---- inputs ------------------------------------------------------------------
@@ -100,6 +113,12 @@ def update_logs(root, client, players, through_date, start=None, log=print):
     path = inputs_dir(root) / "logs.csv"
     idmap_path = inputs_dir(root) / "optic_ids.csv"
     have = R.read_logs(path)
+    if len(have) and have["player_id"].nunique() < MIN_LOG_PLAYERS:
+        # Logs matched against a truncated preseason sheet hold a few players and look "up to date"
+        # by date, so the incremental pull would never repair them. Start over.
+        log(f"  logs: only {have['player_id'].nunique()} players logged (built from an incomplete sheet); rebuilding")
+        path.unlink()
+        have = R.read_logs(path)
     last = have["game_date"].max().strftime("%Y-%m-%d") if len(have) else None
     first = (datetime.strptime(last, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d") if last else start
     if first is None or first > through_date:
@@ -136,8 +155,11 @@ def games_for(client, fixtures_ids, books=("pinnacle", "draftkings")):
 
 def ensure_slate(root, date, client, now, n_sims=2000, log=print, session=None, save_players=True):
     """Build the day's draws once. Returns True when a slate exists."""
-    if store.load_sim(root, date)[1] is not None and cap.load_slate_players(root, date) is not None:
-        return True
+    ids, sim0 = store.load_sim(root, date)
+    if sim0 is not None and cap.load_slate_players(root, date) is not None:
+        if len(ids) >= MIN_SIM_PLAYERS:
+            return True
+        log(f"  {date}: the stored simulation has only {len(ids)} players (built from an incomplete sheet); rebuilding")
     from . import slate, sources
     pre = sources.load_preseason(inputs_dir(root) / "preseason.csv", session=session)
     players = slate.slate_players(pre)

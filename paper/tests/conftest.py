@@ -12,5 +12,8 @@ import pytest  # noqa: E402
 def small_league(monkeypatch):
     """The synthetic leagues in the tests have 20 players; production refuses a preseason sheet under 250.
     Tests of the guard itself put the real threshold back."""
-    from paper import sources
+    from paper import automation, sources
     monkeypatch.setattr(sources, "MIN_ROWS", 5)
+    monkeypatch.setattr(automation, "MIN_LOG_PLAYERS", 3)
+    monkeypatch.setattr(automation, "MIN_SIM_PLAYERS", 5)
+    monkeypatch.setattr(automation, "MIN_PLAYERS_PER_FIXTURE", 2)

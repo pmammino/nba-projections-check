@@ -95,9 +95,10 @@ def load_preseason(cache: Path, refresh=False, session=None) -> pd.DataFrame:
     """Cached fetch, then the model's own integrity repair (validate.repair) so one
     bad row (pt3a > fga) cannot stop a slate."""
     cache = Path(cache)
-    if cache.exists() and not refresh:
-        df = pd.read_csv(cache)
-    else:
+    df = pd.read_csv(cache) if cache.exists() and not refresh else None
+    if df is not None and len(df) < MIN_ROWS:
+        df = None      # a truncated sheet cached by an earlier run must not be reused: fetch it again
+    if df is None:
         df = fetch_preseason(session)
         cache.parent.mkdir(parents=True, exist_ok=True)
         df.to_csv(cache, index=False)
