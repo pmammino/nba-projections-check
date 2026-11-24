@@ -37,6 +37,18 @@ once, at capture, to map an Optic id to our RotoWire player_id (inputs/optic_ids
 Manual commands, for debugging: `discover`, `check-feeds`, `check-results --date D`, `backfill-logs
 --through D`, `slate`, `capture`, `grade`, `replay`, `report --preset ...`.
 
+## Secrets
+Two **repository** secrets (Settings > Secrets and variables > Actions; not environment secrets, the job
+declares no environment):
+
+* `OPTICODDS_API_KEY`: the odds and results feed.
+* `ROTOWIRE_COOKIE`: a logged-in session's `Cookie` header. RotoWire serves only a small preview to an
+  anonymous request (the NFL repo documents ~top 10; here it came back as 7 players, all A-names) and the
+  full tables only to a logged-in session. To get it: log in to rotowire.com, open DevTools > Network, load a
+  projections page, click the `projections.php` request and copy the whole `Cookie` request header.
+  Sessions expire: when it does, the capture stops with "RotoWire feeds list only N players for TEAM ...
+  (set ROTOWIRE_COOKIE)" and the job goes red. Refresh the secret.
+
 ## Dashboard
 `web/` is a Next.js app (deploy on Vercel with Root Directory `web`; see `web/README.md`) that reads the
 `site/` JSON the Action writes to `paper-data`: persona results, the filtered paper-trading view and

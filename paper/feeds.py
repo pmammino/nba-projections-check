@@ -35,7 +35,12 @@ BASE = "https://www.rotowire.com/basketball/tables/"
 URLS = {"mean": BASE + "projections.php?type=today&pos=ALL",
         "ceil": BASE + "projections-ceil-floor.php?type=today&pos=ALL&ceilFloor=C",
         "floor": BASE + "projections-ceil-floor.php?type=today&pos=ALL&ceilFloor=F"}
-HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; nba-paper-trading/1.0)", "Accept": "application/json,*/*"}
+# Same browser-like headers the NFL ingest sends (it works against the same site).
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+    "Accept": "application/json, text/plain, */*",
+    "Referer": "https://www.rotowire.com/basketball/",
+}
 
 # A game has ~25-30 players on the sheet. Fewer than this per team means the feed came back truncated
 # (a live run got only the first handful of players alphabetically) and pricing off it would silently
@@ -44,8 +49,8 @@ MIN_PLAYERS_PER_TEAM = int(os.environ.get("PAPER_MIN_FEED_PLAYERS_PER_TEAM", "8"
 
 
 def request_headers():
-    """Browser-like headers, plus a session cookie when ROTOWIRE_COOKIE is set (for a feed that only
-    returns the full table to a logged-in subscriber)."""
+    """Browser-like headers, plus the session cookie when ROTOWIRE_COOKIE is set. RotoWire serves only a
+    small unauthenticated preview (the NFL repo documents ~top 10) and the full table to a logged-in session."""
     h = dict(HEADERS)
     if os.environ.get("ROTOWIRE_COOKIE"):
         h["Cookie"] = os.environ["ROTOWIRE_COOKIE"]
