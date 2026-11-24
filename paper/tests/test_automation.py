@@ -68,14 +68,56 @@ def test_merge_board_replaces_only_the_named_fixtures():
 
 
 # ---- fakes --------------------------------------------------------------------------
+def _quartiles(mean):
+    from paper import dist
+    c = np.cumsum(dist.nb_pmf(mean, 8.0, 80))
+    return int(np.searchsorted(c, 0.25)), int(np.searchsorted(c, 0.75))
+
+
+# feed column -> (preseason total column, divided by games)
+_FEED_COLS = {"PTS": None, "REB": None, "AST": "ast", "THREEPM": "pt3m", "STL": "stl", "BLK": "blk", "TO": "tov",
+              "PF": "pf", "FGA": "fga", "FGM": "fgm", "FTA": "fta", "FTM": "ftm", "OREB": "oreb", "DREB": "dreb",
+              "THREEPA": "pt3a"}
+
+
+def rw_rows(pre, kind):
+    """RotoWire-shaped rows. kind: 'pre' | 'mean' | 'C' | 'F'. The ceiling feed is
+    direction-aware like game_sim's: for TO and PF the 'ceiling' is the LOW quartile."""
+    if kind == "pre":
+        return [{**{k: v for k, v in r.items() if k not in ("ast", "stl", "blk", "tov")},
+                 "assists": r["ast"], "steals": r["stl"], "blocks": r["blk"], "turnovers": r["tov"]}
+                for r in pre.to_dict("records")]
+    out = []
+    for r in pre.to_dict("records"):
+        g = r["games"]
+        row = {"id": str(r["newsid"]), "firstName": r["firstname"], "lastName": r["lastname"],
+               "player": f"{r['firstname']} {r['lastname']}", "team": r["team"], "pos": r["position"], "G": "1",
+               "opp": "NYK" if r["team"] == "BOS" else "BOS", "DBLDBL": "0.01000", "TRPDBL": "0.00000",
+               "MIN": f"{r['minutes'] / g:.5f}"}
+        per = {"PTS": (2 * r["fgm"] + r["pt3m"] + r["ftm"]) / g, "REB": (r["oreb"] + r["dreb"]) / g}
+        for col, src in _FEED_COLS.items():
+            if src:
+                per[col] = r[src] / g
+        for col, mean in per.items():
+            lo, hi = _quartiles(mean)
+            if kind == "mean":
+                row[col] = f"{mean:.5f}"
+            else:
+                low_tail_is_ceiling = col in ("TO", "PF")
+                row[col] = f"{float(lo if (kind == 'C') == low_tail_is_ceiling else hi):.5f}"
+        out.append(row)
+    return out
+
+
 class FakeSession:
-    """RotoWire: the preseason sheet as JSON, with RotoWire-style column names."""
+    """RotoWire: the preseason sheet and the three daily feeds, by URL."""
     def __init__(self, pre):
-        rows = pre.rename(columns={"ast": "assists", "stl": "steals", "blk": "blocks", "tov": "turnovers"}).to_dict("records")
-        self.rows = rows
+        self.pre, self.urls = pre, []
 
     def get(self, url, headers=None, timeout=None):
-        rows = self.rows
+        self.urls.append(url)
+        kind = "pre" if "type=pre" in url else "C" if "ceilFloor=C" in url else "F" if "ceilFloor=F" in url else "mean"
+        rows = rw_rows(self.pre, kind)
 
         class R:
             ok = True
@@ -195,8 +237,11 @@ def test_a_full_slate_day_runs_itself(tmp_path):
 
     # 10:30 ET: morning window opens -> slate built from RotoWire, morning captured
     assert A.auto(tmp_path, client, now=at(15, 30), log=log, n_sims=400, session=sess) == []
-    assert store.load_sim(tmp_path, DAY)[1] is not None and (tmp_path / "inputs" / "preseason.csv").exists()
     assert store.board_slots(tmp_path, DAY) == ["morning"]
+    assert store.load_sim(tmp_path, DAY)[1] is None                  # feeds mode: no model to run
+    from paper import feeds
+    snap = feeds.load_snapshot(tmp_path, DAY, "morning")
+    assert snap and {r["team"] for r in snap.values()} == {"BOS", "NYK"}
     ids = {r["fixture_id"] for r in store.load_board(tmp_path, DAY, "morning")}
     assert ids == {FX}
     assert (tmp_path / "inputs" / "optic_ids.csv").exists()   # Optic id -> our player_id, persisted
@@ -261,3 +306,24 @@ def test_one_failing_step_does_not_stop_the_others(tmp_path):
     errs = A.auto(tmp_path, client, now=at(15, 30), log=logs.append, n_sims=400, session=FakeSession(pre))
     assert any("capture morning" in e for e in errs)
     assert (tmp_path / "report.md").exists()                      # the report step still ran
+
+
+def test_each_capture_prices_off_the_feed_as_it_stood_then(tmp_path):
+    """A pregame bet must use the pregame feed (late news), never the morning's."""
+    from paper import feeds
+    pre = preseason()
+    client, sess = FakeOptic(pre, {"final": False}), FakeSession(pre)
+    A.auto(tmp_path, client, now=at(15, 30), log=lambda *_: None, session=sess)
+    n_morning = len(sess.urls)
+    A.auto(tmp_path, client, now=at(22, 40), log=lambda *_: None, session=sess)
+    assert len(sess.urls) == n_morning + 3                           # 3 feeds re-fetched at the pregame capture
+    assert feeds.load_snapshot(tmp_path, DAY, "pregame") and feeds.load_snapshot(tmp_path, DAY, "morning")
+
+
+def test_sim_mode_still_works_for_combos_and_comparison(tmp_path):
+    pre = preseason()
+    client, sess = FakeOptic(pre, {"final": False}), FakeSession(pre)
+    errs = A.auto(tmp_path, client, now=at(15, 30), log=lambda *_: None, n_sims=400, session=sess,
+                  price_model="sim")
+    assert errs == [] and store.load_sim(tmp_path, DAY)[1] is not None
+    assert (tmp_path / "inputs" / "preseason.csv").exists() and store.load_candidates(tmp_path, DAY)

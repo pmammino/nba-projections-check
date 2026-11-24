@@ -242,13 +242,26 @@ def write_report(root, path=None):
         band = "—" if s["roi_band"] is None else f"{s['roi_band'] * 100:.1f}%"
         clv = "—" if not s["clv"] else f"{s['clv']['beat_rate'] * 100:.0f}% (n={s['clv']['n']})"
         lines.append(f"| {p['label']} | {s['bets']} | {s['settled']} | {roi} | {band} | {r['verdict']} | {clv} |")
+    from . import feeds
+    cal = feeds.calibration(root, store.all_dates(root))
+    if cal:
+        lines += ["", "## Is the feed's floor/ceiling calibrated?", "",
+                  "Realised vs what the fitted distribution implies. Large gaps mean prices are not to be trusted",
+                  "for that stat (an over-tight band prices every long-shot over as value).", "",
+                  "| stat | n | below floor (real / exp) | above ceiling (real / exp) | inside band (real / exp) |",
+                  "|---|---|---|---|---|"]
+        for stat, c in sorted(cal.items()):
+            lines.append(f"| {stat} | {c['n']} | {c['below'] * 100:.0f}% / {c['exp_below'] * 100:.0f}% | "
+                         f"{c['above'] * 100:.0f}% / {c['exp_above'] * 100:.0f}% | "
+                         f"{c['inside'] * 100:.0f}% / {c['exp_inside'] * 100:.0f}% |")
     out = Path(path or Path(root) / "report.md")
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text("\n".join(lines) + "\n")
     return out
 
 
-def auto(root, client, now=None, overrides=None, log=print, n_sims=2000, session=None):
+def auto(root, client, now=None, overrides=None, log=print, n_sims=2000, session=None,
+         price_model="feeds"):
     now = now or datetime.now(timezone.utc)
     date = slate_date(now)
     errors = []
@@ -268,11 +281,16 @@ def auto(root, client, now=None, overrides=None, log=print, n_sims=2000, session
     for slot, fid in missed:
         log(f"  missed {slot} window for fixture {fid}; skipped (never backfilled with a later price)")
     if any(due.values()):
-        if step("build slate", lambda: ensure_slate(root, date, client, now, n_sims, log, session)):
+        # feeds: nothing to build, the RotoWire feeds are fetched at each capture.
+        # sim: build the day's draws once, before the first capture.
+        ready = True if price_model == "feeds" else step(
+            "build slate", lambda: ensure_slate(root, date, client, now, n_sims, log, session))
+        if ready:
             for slot in SLOT_ORDER:
                 if due[slot]:
                     s = step(f"capture {slot}", lambda slot=slot: cap.capture(
-                        root, client, date, slot, due[slot], overrides=overrides))
+                        root, client, date, slot, due[slot], overrides=overrides,
+                        price_model=price_model, session=session))
                     if s:
                         log(f"  {slot}: {s['fixtures']} fixtures, {s['matched']}/{s['quotes']} quotes matched"
                             + (f", {len(s['unmatched'])} players unmatched" if s["unmatched"] else ""))

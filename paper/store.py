@@ -151,7 +151,7 @@ def load_candidates(root, date):
 
 
 ACTUAL_COLS = ["date", "player_id", "team", "minutes", "pts", "reb", "oreb", "dreb", "ast", "stl",
-               "blk", "tov", "pf", "fga", "fgm", "fta", "ftm", "pt3m"]
+               "blk", "tov", "pf", "fga", "fgm", "fta", "ftm", "pt3m", "pt3a"]
 
 
 def save_actuals(root, date, rows):
@@ -162,7 +162,7 @@ def load_actuals(root, date):
     raw = read_rows(_path(root, "actuals", f"{date}.csv"))
     if raw is None:
         return None
-    return [{**r, **{k: num(r[k]) for k in ACTUAL_COLS if k not in ("date", "team", "player_id")},
+    return [{**r, **{k: num(r.get(k)) for k in ACTUAL_COLS if k not in ("date", "team", "player_id")},
              "player_id": int(float(r["player_id"]))} for r in raw]
 
 

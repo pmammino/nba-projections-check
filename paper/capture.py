@@ -14,9 +14,11 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from . import crosswalk, store
+from . import crosswalk, feeds, store
 from .books import books_to_fetch, resolve_book_ids
-from .candidates import SLOT_ORDER, DrawBook, candidates_for_board
+from .candidates import SLOT_ORDER, candidates_for_board
+from .pricebook import get_book
+from .teams import canon  # noqa: E402
 from .consensus import estimate_hold_by_stat
 from .markets import DEFAULT_STATS, optic_ids
 from .model_fit import fit_model
@@ -78,16 +80,29 @@ def merge_board(existing, new_rows, fixture_ids):
     return [r for r in (existing or []) if str(r["fixture_id"]) not in fx] + list(new_rows)
 
 
-def capture(root, client, date, slot, fixture_ids, stats=None, books=None, overrides=None):
-    """Capture `slot` for specific fixtures and merge into the day's board. Slots
-    are per FIXTURE: a 10:00pm tip's pregame and closing are taken relative to ITS
-    tip, not the first game's."""
+def capture(root, client, date, slot, fixture_ids, stats=None, books=None, overrides=None,
+            price_model="feeds", session=None):
+    """Capture `slot` for specific fixtures and merge into the day's board. Slots are per
+    FIXTURE: a 10:00pm tip's pregame and closing are taken relative to ITS tip, not the
+    first game's.
+
+    price_model="feeds" (default): the RotoWire floor/median/ceiling feeds are fetched NOW
+    and stored for these fixtures' teams, so the price reflects the feed as it stood at this
+    capture (late minutes/injury news included). "sim": uses the day's stored simulator draws
+    (build them first with `slate`)."""
     if slot not in SLOTS:
         raise ValueError(f"slot must be one of {SLOTS}")
+    rows, diag = fetch_board_rows(client, fixture_ids, stats, books)
+    if price_model == "feeds":
+        snap = feeds.fetch_snapshot(session)
+        teams = {canon(r.get(k)) for r in rows for k in ("home", "away")} - {""}
+        feeds.save_merged(root, date, slot, snap, teams)
+        known = {p["player_id"]: p for p in (load_slate_players(root, date) or [])}
+        known.update({p["player_id"]: p for p in feeds.players_of(snap)})
+        save_slate_players(root, date, sorted(known.values(), key=lambda p: p["player_id"]))
     players = load_slate_players(root, date)
     if players is None:
         raise RuntimeError(f"No slate for {date}: build it first (it saves the players and draws).")
-    rows, diag = fetch_board_rows(client, fixture_ids, stats, books)
     matched, unmatched = crosswalk.resolve(rows, players, overrides)
     from . import results as _R
     _R.remember_ids(Path(root) / "inputs" / "optic_ids.csv", matched)
@@ -98,18 +113,19 @@ def capture(root, client, date, slot, fixture_ids, stats=None, books=None, overr
 
 
 def rebuild_candidates(root, date):
-    """Derived: boards + sim + the model as of `date` -> candidates/{date}.csv."""
-    ids, sim = store.load_sim(root, date)
-    if sim is None:
-        return 0
-    draws = DrawBook(sim, ids)
+    """Derived: boards + each slot's price source + the model as of `date` ->
+    candidates/{date}.csv. A slot priced from a feed snapshot uses THAT snapshot; one with
+    none falls back to the day's simulator draws."""
     model, shares = fit_model(root, date)
     boards = {s: store.load_board(root, date, s) or [] for s in store.board_slots(root, date)}
     hold = estimate_hold_by_stat([{"stat": q["stat"], "hold": _hold(q)}
                                   for rows in boards.values() for q in rows])
     out = []
     for slot, rows in boards.items():
-        out += candidates_for_board({"date": date, "slot": slot, "rows": rows}, draws,
+        book = get_book(root, date, slot)
+        if book is None:
+            continue
+        out += candidates_for_board({"date": date, "slot": slot, "rows": rows}, book,
                                     model=model, hold_by_stat=hold, shares=shares)
     store.save_candidates(root, date, out)
     return len(out)

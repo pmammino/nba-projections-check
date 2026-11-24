@@ -12,7 +12,6 @@ Deliberately NOT modelled (the simulator is full-game only):
     players (the draws could supply them; left out until asked for)
   * team totals / game totals (those are inputs to the model, not outputs)
   * first-basket / most-X-player markets
-  * Player Threes Attempted (the simulator tracks threes MADE only)
 """
 
 from __future__ import annotations
@@ -34,6 +33,7 @@ STAT_DEFS = {
     "ra":      {"optic_id": "player_rebounds_+_assists",           "parts": ["reb", "ast"]},
     "pra":     {"optic_id": "player_points_+_rebounds_+_assists",  "parts": ["pts", "reb", "ast"]},
     "stlblk":  {"optic_id": "player_steals_+_blocks",              "parts": ["stl", "blk"]},
+    "threesa": {"optic_id": "player_threes_attempted",           "parts": ["pt3a"]},
     "fgm":     {"optic_id": "player_field_goals_made",             "parts": ["fgm"]},
     "fga":     {"optic_id": "player_field_goals_attempted",        "parts": ["fga"]},
     "ftm":     {"optic_id": "player_free_throws_made",             "parts": ["ftm"]},
@@ -44,10 +44,12 @@ STAT_DEFS = {
     "td":      {"optic_id": "player_triple_double", "parts": ["td"], "has_line": False},
 }
 
-# Markets the capture requests. Start with the high-volume core; the rest are
-# defined (so rows keep their labels) but opt-in via `--stats`.
-DEFAULT_STATS = ["pts", "reb", "ast", "threes", "stl", "blk", "tov",
-                 "pr", "pa", "ra", "pra", "stlblk"]
+# Markets the capture requests: the single-stat props, which both price sources can price.
+# The combos (pr, pa, ra, pra, stlblk) need a JOINT distribution, which only the simulator
+# has (three published marginals cannot price a sum), so they are opt-in via `--stats` and
+# only priced when the day has simulator draws (price_model="sim").
+DEFAULT_STATS = ["pts", "reb", "ast", "threes", "stl", "blk", "tov", "threesa"]
+COMBO_STATS = ["pr", "pa", "ra", "pra", "stlblk"]
 
 _BY_OPTIC = {d["optic_id"]: k for k, d in STAT_DEFS.items()}
 
@@ -86,6 +88,7 @@ def stat_actual(box: dict, stat: str):
         vals = {"pts": pts, "reb": reb, "ast": g("ast"), "pt3m": g("pt3m"),
                 "stl": g("stl"), "blk": g("blk"), "tov": g("tov"),
                 "fgm": g("fgm"), "fga": g("fga"), "ftm": g("ftm"), "fta": g("fta"),
+                "pt3a": g("pt3a") if "pt3a" in box and box["pt3a"] not in (None, "") else 0.0,
                 "oreb": g("oreb"), "dreb": g("dreb")}
     except (KeyError, TypeError, ValueError):
         return None

@@ -3,6 +3,7 @@
   auto            the one command the scheduler runs (every ~15 min): builds the day's slate,
                   captures whatever is due, grades finished dates, rebuilds ledgers + report.md
   discover        list live NBA markets/books; confirms the ids in markets.py
+  check-feeds     first live check of the RotoWire floor/median/ceiling feeds and the fits
   check-results   --date D   first live check of the results path (Optic player-results reconcile?)
   backfill-logs   --through D   pull the season's box scores into the model's game logs
   slate / capture / grade   the individual steps of `auto`, for debugging
@@ -53,7 +54,8 @@ def cmd_auto(a):
     from .automation import auto
     from .optic import OpticOddsClient
     now = datetime.fromisoformat(a.now.replace("Z", "+00:00")) if a.now else datetime.now(timezone.utc)
-    errs = auto(a.root, OpticOddsClient(), now=now, overrides=_overrides(a.overrides), n_sims=a.sims)
+    errs = auto(a.root, OpticOddsClient(), now=now, overrides=_overrides(a.overrides), n_sims=a.sims,
+                price_model=a.price_model)
     if errs:
         sys.exit(1)
 
@@ -74,7 +76,7 @@ def cmd_capture(a):
     c = OpticOddsClient()
     ids = [f["id"] for f in list_fixtures(c, a.date)]
     s = cap.capture(a.root, c, a.date, a.slot, ids, stats=a.stats.split(",") if a.stats else None,
-                    overrides=_overrides(a.overrides))
+                    overrides=_overrides(a.overrides), price_model=a.price_model)
     print(f"{a.date} {a.slot}: {s['fixtures']} fixtures, {s['quotes']} quotes, {s['matched']} matched")
     for u in s["unmatched"][:25]:
         print(f"  unmatched: {u['name']} ({u['reason']})")
@@ -103,6 +105,30 @@ def cmd_check_results(a):
         bad = R.verify_box(g["rows"], t) if t else ["no team result"]
         print(f"  {g['away']}@{g['home']}: {g['status']}, {len(g['rows'])} players played, "
               f"{'box OK' if not g['errors'] and not bad else 'PROBLEM ' + '; '.join((g['errors'] + bad)[:3])}")
+
+
+def cmd_check_feeds(a):
+    """First live check of the price source: what the three RotoWire feeds returned, and
+    whether the fitted distribution reproduces each published floor/ceiling."""
+    from . import dist, feeds
+    snap = feeds.fetch_snapshot()
+    print(f"{len(snap)} players with all three feeds")
+    book = feeds.FeedBook(snap)
+    bad = tot = 0
+    for pid, r in snap.items():
+        for stat in ("pts", "reb", "ast", "threes", "stl", "blk", "tov"):
+            f = book.fit(pid, stat)
+            if f is None:
+                continue
+            tot += 1
+            bad += f[2] > 1e-9
+    print(f"{tot - bad}/{tot} stat fits reproduce the published quartiles exactly "
+          f"({bad} are inconsistent with a negative binomial of that mean; priced at the closest fit)")
+    for pid in list(snap)[: a.show]:
+        r = snap[pid]
+        print(f"  {r['name']} ({r['team']} vs {r['opp']}) min {r['min']}: "
+              + ", ".join(f"{s} {r[s + '_lo']:g}/{r[s + '_mean']:.2f}/{r[s + '_hi']:g}"
+                          for s in ("pts", "reb", "ast", "tov") if r.get(s + "_lo") is not None))
 
 
 def cmd_backfill_logs(a):
@@ -158,12 +184,16 @@ def main(argv=None):
     au = sub.add_parser("auto"); au.set_defaults(fn=cmd_auto)
     au.add_argument("--now", help="override the clock (ISO, UTC) for testing"); au.add_argument("--overrides")
     au.add_argument("--sims", type=int, default=2000)
+    au.add_argument("--price-model", default="feeds", choices=["feeds", "sim"])
     s = sub.add_parser("slate"); s.set_defaults(fn=cmd_slate)
     s.add_argument("--date", required=True); s.add_argument("--sims", type=int, default=2000)
     c = sub.add_parser("capture"); c.set_defaults(fn=cmd_capture)
     c.add_argument("--date", required=True); c.add_argument("--slot", required=True)
     c.add_argument("--stats"); c.add_argument("--overrides")
+    c.add_argument("--price-model", default="feeds", choices=["feeds", "sim"])
     g = sub.add_parser("grade"); g.set_defaults(fn=cmd_grade); g.add_argument("--date", required=True)
+    cf = sub.add_parser("check-feeds"); cf.set_defaults(fn=cmd_check_feeds)
+    cf.add_argument("--show", type=int, default=3)
     ck = sub.add_parser("check-results"); ck.set_defaults(fn=cmd_check_results)
     ck.add_argument("--date", required=True); ck.add_argument("--fixture", action="append")
     bf = sub.add_parser("backfill-logs"); bf.set_defaults(fn=cmd_backfill_logs)

@@ -9,8 +9,15 @@ from the NFL dashboard repo (`personas.mjs`, `paper-filter.mjs`, `consensus.mjs`
 Needs one repo secret, `OPTICODDS_API_KEY`. Each run decides from the clock and the
 fixtures' tip times what is due:
 
-* **slate** (once a day, before the first capture): RotoWire preseason sheet (cached),
-  the model's game logs brought up to date, spread/total, projection + simulation
+* **price source** (default, `--price-model feeds`): RotoWire's daily floor/median/ceiling
+  feeds, fetched AT EACH CAPTURE and stored per slot, so a pregame bet is priced off the feed
+  as it stood at pregame (late minutes/injury news included). Nothing to train or simulate.
+  Each stat becomes a negative binomial with the feed's mean, whose dispersion is the one whose
+  quartiles reproduce the published floor/ceiling (`dist.py`). The ceiling feed is direction-aware
+  (for turnovers/fouls it is the LOW tail), so lower/upper quartile = min/max of the two feeds.
+  `--price-model sim` instead runs this repo's simulator once a day (preseason sheet + logs +
+  spread/total) and is the only way to price the combo markets (PRA etc.), which need a joint
+  distribution that three published marginals cannot give.
 * **morning** every fixture from 10:00 ET; **pregame** each fixture ~2h before ITS tip;
   **closing** each fixture in the last ~25 min before ITS tip (reference only, never bet)
 * **grade** a date once every captured fixture is `completed`, the box score reproduces
@@ -25,7 +32,7 @@ Results come from OpticOdds only: `/fixtures/results` (finality, team totals) an
 the same id the odds carry, so a bet is matched to its result by id; names are used
 once, at capture, to map an Optic id to our RotoWire player_id (inputs/optic_ids.csv).
 
-Manual commands, for debugging: `discover`, `check-results --date D`, `backfill-logs
+Manual commands, for debugging: `discover`, `check-feeds`, `check-results --date D`, `backfill-logs
 --through D`, `slate`, `capture`, `grade`, `replay`, `report --preset ...`.
 
 ## What is durable and what is derived
@@ -51,15 +58,17 @@ Half/quarter/first-N-minutes markets, (Combo)/(Either)/(Each)/H2H markets, team
 totals, first-basket and most-X markets, Player Threes Attempted. See `markets.py`.
 
 ## Verified vs not
-Verified by `pytest paper/tests` (69 tests, offline): pricing, de-vig, consensus and
+Verified by `pytest paper/tests` (81 tests, offline): pricing, de-vig, consensus and
 weight fitting (recovers a planted lead), personas, filters, normalization, crosswalk,
 settlement incl. DNP/pending, CLV, point-in-time fitting, client batching/retry/key
 handling, the scheduler's windows, player-results parsing against the real payload
 shape, and a full slate day (RotoWire JSON -> real model -> morning/pregame/closing ->
 grading -> ledgers) against fakes.
 
-**Not verified against live endpoints** (blocked in the build session): the RotoWire
-fetch and its column names, the OpticOdds NBA odds/fixtures calls, the spread/total
+**Not verified against live endpoints** (blocked in the build session): the three RotoWire
+feeds (the median/ceiling rows are real samples; the floor feed has not been seen), the
+preseason fetch used by `--price-model sim`, the OpticOdds NBA odds/fixtures calls, the spread/total
 parsing on a real payload, and that Optic's player id on a prop equals `player.id` in
 player-results (expected from the id format; `check-results` shows it). Run
-`discover` and `check-results` first.
+`discover`, `check-feeds` and `check-results` first. `report.md` also carries a calibration table
+(realised vs implied share below floor / above ceiling): read it before trusting any price.

@@ -25,7 +25,7 @@ def actuals_from_logs(logs, date, id_col="player_id"):
                      "minutes": r.get("minutes"),
                      "pts": 2 * r["fgm"] + r["pt3m"] + r["ftm"], "reb": r["oreb"] + r["dreb"],
                      **{k: r[k] for k in ("oreb", "dreb", "ast", "stl", "blk", "tov", "pf",
-                                          "fga", "fgm", "fta", "ftm", "pt3m")}})
+                                          "fga", "fgm", "fta", "ftm", "pt3m", "pt3a")}})
     return [{k: r.get(k) for k in ACTUAL_COLS} for r in rows]
 
 
@@ -38,5 +38,5 @@ def actuals_from_rows(matched, date):
                     "minutes": r["minutes"], "pts": 2 * r["fgm"] + r["pt3m"] + r["ftm"],
                     "reb": r["oreb"] + r["dreb"],
                     **{k: r[k] for k in ("oreb", "dreb", "ast", "stl", "blk", "tov", "pf",
-                                         "fga", "fgm", "fta", "ftm", "pt3m")}})
+                                         "fga", "fgm", "fta", "ftm", "pt3m", "pt3a")}})
     return out

@@ -9,7 +9,8 @@ the market had adopted by the close), which converges far faster than win/loss.
 from __future__ import annotations
 
 from . import store
-from .candidates import BET_SLOTS, CLOSING_SLOT, DrawBook
+from .candidates import BET_SLOTS, CLOSING_SLOT
+from .pricebook import get_book
 from .consensus import (DEFAULT_ASSUMED_HOLD, SHARE_BAND, book_votes, build_lead_pairs, logit,
                         pool_votes, shares_as_of, weights_as_of, weights_for_stat, _clip_logit)
 from .pricing import win_prob
@@ -34,23 +35,25 @@ def lead_pairs(root, dates):
 
 
 def share_samples(root, dates, pairs=None):
-    """One observation per market on a BET board: books' pooled logit, the
-    simulator's logit, and what happened. Weights are as of each market's own
-    date, so a market priced on day 3 is judged against the pool as it stood."""
+    """One observation per market on a BET board: the books' pooled logit, our price's
+    logit, and what happened. Weights are as of each market's own date, so a market priced
+    on day 3 is judged against the pool as it stood. Works for either price source
+    (feed snapshot or simulator draws)."""
     pairs = pairs if pairs is not None else lead_pairs(root, dates)
     wcache, samples = {}, []
+    from .markets import stat_actual
     for date in dates:
         act = store.load_actuals(root, date)
-        ids, sim = store.load_sim(root, date)
-        if not act or sim is None:
+        if not act:
             continue
         by_player = {a["player_id"]: a for a in act}
-        db = DrawBook(sim, ids)
-        from .markets import stat_actual
         for slot in BET_SLOTS:
+            db = get_book(root, date, slot)
+            if db is None:
+                continue
             groups = {}
             for r in store.load_board(root, date, slot) or []:
-                if r.get("player_id") is not None and db.has(r["player_id"]):
+                if r.get("player_id") is not None and db.priced(r["player_id"], r["stat"]):
                     groups.setdefault((int(r["player_id"]), r["stat"], r["line"]), []).append(r)
             for (pid, stat, line), rows in groups.items():
                 box = by_player.get(pid)

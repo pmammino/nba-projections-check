@@ -53,6 +53,9 @@ class DrawBook:
         from .markets import STAT_DEFS
         return all(part in self.sim for part in STAT_DEFS[stat]["parts"])
 
+    def priced(self, player_id, stat) -> bool:
+        return self.has(player_id) and self.supports(stat)
+
     def has(self, player_id) -> bool:
         try:
             return int(player_id) in self.col
@@ -72,7 +75,7 @@ def candidates_for_board(board, draws, model=None, hold_by_stat=None, shares=Non
     been crosswalked (carry our `player_id`, plus `opp`). Returns candidate dicts."""
     date, slot = board["date"], board["slot"]
     hold_by_stat = hold_by_stat or {}
-    quotes = [q for q in board["rows"] if q.get("player_id") not in (None, "") and draws.has(q["player_id"]) and draws.supports(q["stat"])]
+    quotes = [q for q in board["rows"] if q.get("player_id") not in (None, "") and draws.priced(q["player_id"], q["stat"])]
 
     # Per market (player, stat, line): who quoted, what the rest of the market says.
     markets = {}
