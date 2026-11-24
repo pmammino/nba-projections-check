@@ -1,13 +1,13 @@
 """Command line. Run from the repo root:  python -m paper.cli <command> ...
 
-  discover                         list live NBA markets/books; confirms the ids in markets.py
-  slate    --date D --preseason P [--logs L] [--crosswalk X]
-                                   run projection+simulation, save draws and the slate's players
-  capture  --date D --slot morning|pregame|closing
-                                   pull OpticOdds, crosswalk, save the board, rebuild candidates
-  grade    --date D --logs L       save box scores for settlement
-  replay   [--basis proj|pool|sharp]   replay every persona; print ROI table, write ledgers
-  report   [--preset realistic|sharp|ladder|everything]   filtered paper trading + verdict
+  auto            the one command the scheduler runs (every ~15 min): builds the day's slate,
+                  captures whatever is due, grades finished dates, rebuilds ledgers + report.md
+  discover        list live NBA markets/books; confirms the ids in markets.py
+  check-results   --date D   first live check of the results path (Optic + nba.com reconcile?)
+  backfill-logs   --through D   pull the season's box scores into the model's game logs
+  slate / capture / grade   the individual steps of `auto`, for debugging
+  replay          [--basis proj|pool|sharp]   replay every persona; print ROI table
+  report          [--preset realistic|sharp|ladder|everything]   filtered paper trading
 """
 
 from __future__ import annotations
@@ -42,51 +42,84 @@ def cmd_discover(a):
     print("books resolved:", res["matched"], "| missing:", res["missing"], "| ambiguous:", res["ambiguous"])
 
 
-def cmd_slate(a):
-    from . import slate
-    from .capture import save_slate_players
+def _overrides(path):
+    import os
+    path = path or os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "paper_overrides.json")
+    return json.load(open(path)) if os.path.exists(path) else None
+
+
+def cmd_auto(a):
+    from datetime import datetime, timezone
+    from .automation import auto
     from .optic import OpticOddsClient
-    from .capture import slate_window
-    pre = _read_frame(a.preseason)
-    logs = _read_frame(a.logs) if a.logs else None
-    if logs is not None and "player_id" not in logs.columns:
-        if not a.crosswalk:
-            sys.exit("logs have no player_id: pass --crosswalk (newsid,nba_player_id) to map them")
-        xw = _read_frame(a.crosswalk)[["newsid", "nba_player_id"]].dropna()
-        logs = logs.merge(xw, on="nba_player_id").rename(columns={"newsid": "player_id"})
-    c = OpticOddsClient()
-    start, end = slate_window(a.date)
-    lines = c.get_odds_for_fixtures(
-        [f["id"] for f in c.get_fixtures(start_date=start, end_date=end)], ["pinnacle"],
-        ["point_spread", "total_points"])
-    games = slate.games_from_lines(lines)
-    if games.empty:
-        sys.exit("no spread/total lines found for that date")
-    players, sim, proj = slate.build_draws(a.date, pre, games, logs, n_sims=a.sims, seed=a.seed)
-    slate.save_slate(a.root, a.date, players, sim)
-    save_slate_players(a.root, a.date, slate.slate_players(pre, proj))
-    print(f"{a.date}: {len(players)} players, {len(games) // 2} games, {a.sims} sims saved")
+    from .results import Results
+    now = datetime.fromisoformat(a.now.replace("Z", "+00:00")) if a.now else datetime.now(timezone.utc)
+    errs = auto(a.root, OpticOddsClient(), Results(), now=now, overrides=_overrides(a.overrides), n_sims=a.sims)
+    if errs:
+        sys.exit(1)
+
+
+def cmd_slate(a):
+    from datetime import datetime, timezone
+    from .automation import ensure_slate
+    from .optic import OpticOddsClient
+    from .results import Results
+    ok = ensure_slate(a.root, a.date, OpticOddsClient(), Results(), datetime.now(timezone.utc), n_sims=a.sims)
+    if not ok:
+        sys.exit("slate not built (no fixtures or no spread/total lines yet)")
 
 
 def cmd_capture(a):
-    from .capture import capture
+    from .automation import cap
+    from .capture import list_fixtures
     from .optic import OpticOddsClient
-    ov = json.load(open(a.overrides)) if a.overrides else None
-    s = capture(a.root, OpticOddsClient(), a.date, a.slot,
-                stats=a.stats.split(",") if a.stats else None, overrides=ov)
+    c = OpticOddsClient()
+    ids = [f["id"] for f in list_fixtures(c, a.date)]
+    s = cap.capture(a.root, c, a.date, a.slot, ids, stats=a.stats.split(",") if a.stats else None,
+                    overrides=_overrides(a.overrides))
     print(f"{a.date} {a.slot}: {s['fixtures']} fixtures, {s['quotes']} quotes, {s['matched']} matched")
     for u in s["unmatched"][:25]:
         print(f"  unmatched: {u['name']} ({u['reason']})")
-    if len(s["unmatched"]) > 25:
-        print(f"  ... and {len(s['unmatched']) - 25} more")
 
 
 def cmd_grade(a):
-    from .actuals import actuals_from_logs
-    logs = _read_frame(a.logs)
-    rows = actuals_from_logs(logs, a.date)
-    store.save_actuals(a.root, a.date, rows)
-    print(f"{a.date}: {len(rows)} box-score rows saved")
+    from .automation import grade_date
+    from .optic import OpticOddsClient
+    from .results import Results
+    ok = grade_date(a.root, a.date, OpticOddsClient(), Results())
+    print(f"{a.date}: {'graded' if ok else 'not graded (games unfinished or box score did not reconcile)'}")
+
+
+def cmd_check_results(a):
+    """First live check of the results path: what the feeds returned, and whether
+    the box score reconciles with Optic's team totals."""
+    from . import results as R
+    from .automation import board_fixture_ids
+    from .optic import OpticOddsClient
+    c, res = OpticOddsClient(), R.Results()
+    ids = a.fixture or board_fixture_ids(a.root, a.date)
+    games = R.parse_optic_results(c.get_fixture_results(ids))
+    print(f"optic: {len(games)} fixtures, {sum(g['completed'] for g in games)} completed")
+    for g in games:
+        sched = res.find_game(g["home"], g["away"], a.date)
+        if not sched:
+            print(f"  {g['away']}@{g['home']}: not found on the nba.com schedule")
+            continue
+        final, box = res.box(sched["game_id"], sched["date"])
+        bad = R.verify_box(box, g)
+        print(f"  {g['away']}@{g['home']}: cdn final={final} players={len(box)} "
+              f"{'OK' if not bad else 'MISMATCH ' + '; '.join(bad)}")
+
+
+def cmd_backfill_logs(a):
+    from datetime import datetime, timezone
+    from . import sources
+    from .automation import inputs_dir, season_start, update_logs
+    from .results import Results
+    from . import slate
+    now = datetime.now(timezone.utc)
+    pre = sources.load_preseason(inputs_dir(a.root) / "preseason.csv")
+    update_logs(a.root, Results(), slate.slate_players(pre), a.through, start=a.start or season_start(now))
 
 
 def cmd_replay(a):
@@ -128,15 +161,19 @@ def main(argv=None):
     p.add_argument("--root", default=None, help="data root (default <repo>/data/paper)")
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("discover").set_defaults(fn=cmd_discover)
+    au = sub.add_parser("auto"); au.set_defaults(fn=cmd_auto)
+    au.add_argument("--now", help="override the clock (ISO, UTC) for testing"); au.add_argument("--overrides")
+    au.add_argument("--sims", type=int, default=2000)
     s = sub.add_parser("slate"); s.set_defaults(fn=cmd_slate)
-    s.add_argument("--date", required=True); s.add_argument("--preseason", required=True)
-    s.add_argument("--logs"); s.add_argument("--crosswalk")
-    s.add_argument("--sims", type=int, default=4000); s.add_argument("--seed", type=int, default=0)
+    s.add_argument("--date", required=True); s.add_argument("--sims", type=int, default=2000)
     c = sub.add_parser("capture"); c.set_defaults(fn=cmd_capture)
     c.add_argument("--date", required=True); c.add_argument("--slot", required=True)
     c.add_argument("--stats"); c.add_argument("--overrides")
-    g = sub.add_parser("grade"); g.set_defaults(fn=cmd_grade)
-    g.add_argument("--date", required=True); g.add_argument("--logs", required=True)
+    g = sub.add_parser("grade"); g.set_defaults(fn=cmd_grade); g.add_argument("--date", required=True)
+    ck = sub.add_parser("check-results"); ck.set_defaults(fn=cmd_check_results)
+    ck.add_argument("--date", required=True); ck.add_argument("--fixture", action="append")
+    bf = sub.add_parser("backfill-logs"); bf.set_defaults(fn=cmd_backfill_logs)
+    bf.add_argument("--through", required=True); bf.add_argument("--start")
     r = sub.add_parser("replay"); r.set_defaults(fn=cmd_replay)
     r.add_argument("--basis", default="proj", choices=["proj", "pool", "sharp"])
     r.add_argument("--dry-run", action="store_true")

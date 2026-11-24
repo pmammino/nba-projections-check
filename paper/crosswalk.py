@@ -15,21 +15,13 @@ import unicodedata
 
 _SUFFIX = re.compile(r"\s+(jr|sr|ii|iii|iv|v)$")
 
-# RotoWire vs ESPN/Optic abbreviations disagree on 7 of 30 teams (see ingest.py).
-_TEAM_ALIASES = {"bro": "bkn", "chr": "cha", "nor": "no", "pho": "phx", "san": "sa",
-                 "uta": "utah", "was": "wsh", "nop": "no", "gs": "gsw", "gsw": "gsw",
-                 "ny": "nyk", "nyk": "nyk", "sas": "sa", "wash": "wsh"}
+from .teams import canon as norm_team  # noqa: E402  (canonical tri-codes)
 
 
 def norm_name(s) -> str:
     s = unicodedata.normalize("NFKD", str(s or "")).encode("ascii", "ignore").decode()
     s = re.sub(r"[^a-z ]", "", s.lower().replace("-", " ").replace(".", ""))
     return _SUFFIX.sub("", re.sub(r"\s+", " ", s).strip())
-
-
-def norm_team(t) -> str:
-    k = re.sub(r"[^a-z]", "", str(t or "").lower())
-    return _TEAM_ALIASES.get(k, k)
 
 
 def build_index(players):
@@ -68,6 +60,6 @@ def resolve(rows, players, overrides=None):
                 continue
         home, away = norm_team(r.get("home")), norm_team(r.get("away"))
         t = norm_team(team)
-        opp = r.get("away") if t == home else r.get("home") if t == away else ""
+        opp = away if t == home else home if t == away else ""
         matched.append({**r, "player_id": pid, "team": team, "opp": opp})
     return matched, [{"name": n, "reason": why, "fixture_id": f} for (n, why), f in unmatched.items()]

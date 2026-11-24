@@ -185,11 +185,14 @@ class OpticOddsClient:
         return self._fan_out("/fixtures/odds/historical", fixture_ids, sportsbooks, markets,
                              MAX_FIXTURES_HISTORICAL, on_progress)
 
-    # ---- results (settlement alternative to nba_api) ----------------------
+    # ---- results ---------------------------------------------------------
     def get_fixture_results(self, fixture_ids):
+        """/fixtures/results: final status, scores and TEAM stats per fixture
+        (confirmed shape; it carries no player lines, so it cannot settle player
+        props by itself). `fixture_id` is sent repeated, 5 per request."""
         out = []
         for fx in chunk(list(fixture_ids), MAX_FIXTURES):
-            out.append(self.get("/fixtures/results", {"fixture_id": fx}))
+            out.extend(unwrap(self.get("/fixtures/results", {"fixture_id": fx})))
         return out
 
 

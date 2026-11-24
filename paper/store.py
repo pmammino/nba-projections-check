@@ -22,8 +22,9 @@ import numpy as np
 
 DEFAULT_ROOT = Path(os.environ.get("PAPER_DATA_DIR") or Path(__file__).resolve().parent.parent / "data" / "paper")
 
-SIM_KEYS = ["pts", "reb", "oreb", "dreb", "ast", "stl", "blk", "tov", "pf",
-            "fga", "fta", "fgm", "ftm", "pt3m", "dd", "td"]
+# Only what the default markets need: sims are committed with the data, so size
+# matters (~1 MB/day compressed). Add keys here (e.g. fga, fgm) to price more markets.
+SIM_KEYS = ["pts", "reb", "ast", "pt3m", "stl", "blk", "tov"]
 
 
 def _path(root, *parts) -> Path:

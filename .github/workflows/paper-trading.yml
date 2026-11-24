@@ -1,0 +1,81 @@
+name: NBA paper trading
+
+# One job does everything: `python -m paper.cli auto` decides from the clock and the
+# fixtures' tip times whether a slate must be built, a morning / pregame / closing
+# capture is due, or yesterday's games can be graded, then rebuilds the ledgers and
+# report.md. It runs every 15 minutes; most runs find nothing due and exit in seconds.
+#
+# Needs ONE repo secret: OPTICODDS_API_KEY (Settings > Secrets and variables > Actions).
+#
+# Data lives on its own branch, `paper-data`, so the code branch stays free of
+# thousands of data commits. The first run creates the branch.
+#
+# NOTE: GitHub only runs `schedule` triggers from the DEFAULT branch, so this file
+# must be merged there. `workflow_dispatch` works from any branch for a manual test.
+
+on:
+  schedule:
+    # 15:00-10:00 UTC covers US NBA tips (slates run 10:00Z to 10:00Z) plus a grading
+    # sweep in the morning. Scheduled runs can be delayed by several minutes under load;
+    # the per-fixture windows in automation.py tolerate that and report anything missed.
+    - cron: "*/15 0-6,15-23 * * *"
+  workflow_dispatch:
+    inputs:
+      now:
+        description: "Override the clock (ISO UTC, e.g. 2026-11-24T22:30:00Z). Blank = real time."
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: paper-trading          # never two runs at once: they would race on the data branch
+  cancel-in-progress: false
+
+jobs:
+  auto:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40         # the first run backfills the season's box scores
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check out the data branch (create it on first run)
+        run: |
+          git fetch origin paper-data 2>/dev/null || true
+          if git rev-parse --verify origin/paper-data >/dev/null 2>&1; then
+            git worktree add data/paper origin/paper-data
+            git -C data/paper checkout -B paper-data origin/paper-data
+          else
+            git worktree add --detach data/paper
+            git -C data/paper checkout --orphan paper-data
+            git -C data/paper rm -rf . >/dev/null 2>&1 || true
+          fi
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Run
+        env:
+          OPTICODDS_API_KEY: ${{ secrets.OPTICODDS_API_KEY }}
+        run: |
+          if [ -n "${{ github.event.inputs.now }}" ]; then
+            python -m paper.cli auto --now "${{ github.event.inputs.now }}"
+          else
+            python -m paper.cli auto
+          fi
+
+      - name: Publish data
+        if: always()
+        run: |
+          cd data/paper
+          git config user.name "paper-trading[bot]"
+          git config user.email "paper-trading@users.noreply.github.com"
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m "paper data $(date -u +%Y-%m-%dT%H:%MZ)"
+            git push origin paper-data
+          fi

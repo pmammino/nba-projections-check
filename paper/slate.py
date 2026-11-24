@@ -17,7 +17,7 @@ from __future__ import annotations
 import pandas as pd
 
 from . import bridge, store
-from .crosswalk import norm_team
+from .teams import canon
 
 
 def games_from_lines(fixtures_payload, team_map=None):
@@ -27,7 +27,6 @@ def games_from_lines(fixtures_payload, team_map=None):
     Team labels use the competitors' abbreviations, mapped through ingest's
     ESPN->RotoWire table so they join to the preseason sheet. Selection on a
     spread odd is matched on team name OR abbreviation."""
-    m = bridge.model()
     rows = []
     payloads = fixtures_payload if isinstance(fixtures_payload, list) else [fixtures_payload]
     fixtures = []
@@ -51,8 +50,7 @@ def games_from_lines(fixtures_payload, team_map=None):
             sp = spreads.get(str(nm), spreads.get(str(ab)))
             if sp is None:
                 continue
-            to_rw = lambda t: m.ingest.ESPN_TO_ROTOWIRE.get(t, t)  # noqa: E731
-            rows.append({"game_id": fx.get("id"), "team": to_rw(ab), "opp": to_rw(opp_ab),
+            rows.append({"game_id": fx.get("id"), "team": canon(ab), "opp": canon(opp_ab),
                          "is_home": is_home, "spread": sp, "total": total,
                          "game_date": fx.get("start_date"), "fixture_id": fx.get("id")})
     return pd.DataFrame(rows)

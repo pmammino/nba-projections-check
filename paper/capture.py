@@ -31,13 +31,26 @@ def slate_window(date: str):
     return d0.strftime("%Y-%m-%dT%H:%M:%SZ"), (d0 + timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def fetch_board_rows(client, date, stats=None, books=None):
-    """Live pull -> paired quote rows (not yet crosswalked). NOT exercised
-    against the live NBA feed from the build session."""
+def list_fixtures(client, date):
+    """Unplayed fixtures for a slate date: [{id, start (datetime UTC)}]."""
     start, end = slate_window(date)
-    fixtures = client.get_fixtures(start_date=start, end_date=end)
-    fixture_ids = [f["id"] for f in fixtures if f.get("id") and not f.get("is_live")
-                   and str(f.get("status", "")).lower() in ("unplayed", "scheduled", "")]
+    out = []
+    for f in client.get_fixtures(start_date=start, end_date=end):
+        if not f.get("id") or f.get("is_live"):
+            continue
+        if str(f.get("status", "")).lower() not in ("unplayed", "scheduled", ""):
+            continue
+        ts = str(f.get("start_date", "")).replace("Z", "+00:00")
+        try:
+            out.append({"id": f["id"], "start": datetime.fromisoformat(ts).astimezone(timezone.utc)})
+        except ValueError:
+            continue
+    return sorted(out, key=lambda x: x["start"])
+
+
+def fetch_board_rows(client, fixture_ids, stats=None, books=None):
+    """Live pull for specific fixtures -> paired quote rows (not yet crosswalked).
+    NOT exercised against the live NBA feed from the build session."""
     live = client.get_sportsbooks()
     res = resolve_book_ids(books or books_to_fetch(), live)
     for w in res["missing"]:
@@ -46,7 +59,7 @@ def fetch_board_rows(client, date, stats=None, books=None):
         print(f"  warning: book '{w}' is ambiguous ({', '.join(ids)}); skipped")
     payloads = client.get_odds_for_fixtures(fixture_ids, res["ids"], optic_ids(stats or DEFAULT_STATS))
     rows, diag = normalize_payloads(payloads, stats or DEFAULT_STATS)
-    return rows, diag, len(fixture_ids)
+    return rows, diag
 
 
 def save_slate_players(root, date, players):
@@ -58,19 +71,27 @@ def load_slate_players(root, date):
     return None if raw is None else [{**r, "player_id": int(r["player_id"])} for r in raw]
 
 
-def capture(root, client, date, slot, stats=None, books=None, overrides=None):
+def merge_board(existing, new_rows, fixture_ids):
+    """Replace the rows of `fixture_ids` in a board, keep every other fixture's."""
+    fx = set(map(str, fixture_ids))
+    return [r for r in (existing or []) if str(r["fixture_id"]) not in fx] + list(new_rows)
+
+
+def capture(root, client, date, slot, fixture_ids, stats=None, books=None, overrides=None):
+    """Capture `slot` for specific fixtures and merge into the day's board. Slots
+    are per FIXTURE: a 10:00pm tip's pregame and closing are taken relative to ITS
+    tip, not the first game's."""
     if slot not in SLOTS:
         raise ValueError(f"slot must be one of {SLOTS}")
     players = load_slate_players(root, date)
     if players is None:
-        raise RuntimeError(f"No slate for {date}: run `slate` first (it saves the players and draws).")
-    rows, diag, n_fixtures = fetch_board_rows(client, date, stats, books)
+        raise RuntimeError(f"No slate for {date}: build it first (it saves the players and draws).")
+    rows, diag = fetch_board_rows(client, fixture_ids, stats, books)
     matched, unmatched = crosswalk.resolve(rows, players, overrides)
-    store.save_board(root, date, slot, matched)
-    summary = {"fixtures": n_fixtures, "quotes": len(rows), "matched": len(matched),
-               "unmatched": unmatched, "diagnostics": diag}
+    store.save_board(root, date, slot, merge_board(store.load_board(root, date, slot), matched, fixture_ids))
     rebuild_candidates(root, date)
-    return summary
+    return {"fixtures": len(fixture_ids), "quotes": len(rows), "matched": len(matched),
+            "unmatched": unmatched, "diagnostics": diag}
 
 
 def rebuild_candidates(root, date):
