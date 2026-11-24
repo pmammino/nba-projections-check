@@ -81,19 +81,19 @@ def merge_board(existing, new_rows, fixture_ids):
 
 
 def capture(root, client, date, slot, fixture_ids, stats=None, books=None, overrides=None,
-            price_model="feeds", session=None):
+            price_model="both", session=None):
     """Capture `slot` for specific fixtures and merge into the day's board. Slots are per
     FIXTURE: a 10:00pm tip's pregame and closing are taken relative to ITS tip, not the
     first game's.
 
-    price_model="feeds" (default): the RotoWire floor/median/ceiling feeds are fetched NOW
+    price_model="feeds" or "both" (default): the RotoWire floor/median/ceiling feeds are fetched NOW
     and stored for these fixtures' teams, so the price reflects the feed as it stood at this
-    capture (late minutes/injury news included). "sim": uses the day's stored simulator draws
-    (build them first with `slate`)."""
+    capture (late minutes/injury news included). "both" additionally prices the combo markets from
+    the day's simulator draws when they exist. "sim": the draws only (build them with `slate`)."""
     if slot not in SLOTS:
         raise ValueError(f"slot must be one of {SLOTS}")
     rows, diag = fetch_board_rows(client, fixture_ids, stats, books)
-    if price_model == "feeds":
+    if price_model in ("feeds", "both"):
         snap = feeds.fetch_snapshot(session)
         teams = {canon(r.get(k)) for r in rows for k in ("home", "away")} - {""}
         feeds.save_merged(root, date, slot, snap, teams)

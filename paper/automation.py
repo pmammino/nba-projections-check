@@ -136,7 +136,7 @@ def games_for(client, fixtures_ids, books=("pinnacle", "draftkings")):
     return None
 
 
-def ensure_slate(root, date, client, now, n_sims=2000, log=print, session=None):
+def ensure_slate(root, date, client, now, n_sims=2000, log=print, session=None, save_players=True):
     """Build the day's draws once. Returns True when a slate exists."""
     if store.load_sim(root, date)[1] is not None and cap.load_slate_players(root, date) is not None:
         return True
@@ -162,7 +162,8 @@ def ensure_slate(root, date, client, now, n_sims=2000, log=print, session=None):
         sim = {k: v[:, keep] for k, v in sim.items()}
         proj_players = proj_players[keep].reset_index(drop=True)
     slate.save_slate(root, date, proj_players, sim)
-    cap.save_slate_players(root, date, slate.slate_players(pre, proj))
+    if save_players:      # in `both` mode the crosswalk uses the feed's players (see capture)
+        cap.save_slate_players(root, date, slate.slate_players(pre, proj))
     log(f"  {date}: slate built ({len(proj_players)} players, {len(games) // 2} games)")
     return True
 
@@ -261,7 +262,7 @@ def write_report(root, path=None):
 
 
 def auto(root, client, now=None, overrides=None, log=print, n_sims=2000, session=None,
-         price_model="feeds"):
+         price_model="both"):
     now = now or datetime.now(timezone.utc)
     date = slate_date(now)
     errors = []
@@ -274,6 +275,8 @@ def auto(root, client, now=None, overrides=None, log=print, n_sims=2000, session
             log(f"  !! {name} failed: {err}")
             return None
 
+    from .markets import COMBO_STATS, DEFAULT_STATS
+    stats = DEFAULT_STATS + COMBO_STATS if price_model in ("both", "sim") else DEFAULT_STATS
     log(f"auto @ {now:%Y-%m-%d %H:%MZ}  slate {date}")
     fixtures = step("list fixtures", lambda: cap.list_fixtures(client, date)) or []
     captured = captured_fixtures(root, date)
@@ -281,15 +284,20 @@ def auto(root, client, now=None, overrides=None, log=print, n_sims=2000, session
     for slot, fid in missed:
         log(f"  missed {slot} window for fixture {fid}; skipped (never backfilled with a later price)")
     if any(due.values()):
-        # feeds: nothing to build, the RotoWire feeds are fetched at each capture.
-        # sim: build the day's draws once, before the first capture.
-        ready = True if price_model == "feeds" else step(
-            "build slate", lambda: ensure_slate(root, date, client, now, n_sims, log, session))
+        # feeds: nothing to build (the RotoWire feeds are fetched at each capture).
+        # sim: the day's draws are required. both: the draws are only for the combo markets, so a
+        # simulator failure must NOT block the feed-priced captures; it is logged and combos wait.
+        if price_model == "feeds":
+            ready = True
+        else:
+            built = step("build slate", lambda: ensure_slate(
+                root, date, client, now, n_sims, log, session, save_players=(price_model == "sim")))
+            ready = True if price_model == "both" else built
         if ready:
             for slot in SLOT_ORDER:
                 if due[slot]:
                     s = step(f"capture {slot}", lambda slot=slot: cap.capture(
-                        root, client, date, slot, due[slot], overrides=overrides,
+                        root, client, date, slot, due[slot], overrides=overrides, stats=stats,
                         price_model=price_model, session=session))
                     if s:
                         log(f"  {slot}: {s['fixtures']} fixtures, {s['matched']}/{s['quotes']} quotes matched"

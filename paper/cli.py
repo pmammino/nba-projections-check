@@ -124,6 +124,14 @@ def cmd_check_feeds(a):
             bad += f[2] > 1e-9
     print(f"{tot - bad}/{tot} stat fits reproduce the published quartiles exactly "
           f"({bad} are inconsistent with a negative binomial of that mean; priced at the closest fit)")
+    try:
+        from . import sources
+        pre = sources.fetch_preseason()
+        both = set(snap) & set(pre["newsid"])
+        print(f"id check: {len(both)} of {len(snap)} feed ids are also preseason newsids "
+              f"({'OK' if len(both) >= 0.9 * len(snap) else 'MISMATCH: combos (simulator) will not line up with feed players'})")
+    except Exception as err:
+        print(f"id check skipped (preseason sheet unavailable: {err})")
     for pid in list(snap)[: a.show]:
         r = snap[pid]
         print(f"  {r['name']} ({r['team']} vs {r['opp']}) min {r['min']}: "
@@ -184,13 +192,13 @@ def main(argv=None):
     au = sub.add_parser("auto"); au.set_defaults(fn=cmd_auto)
     au.add_argument("--now", help="override the clock (ISO, UTC) for testing"); au.add_argument("--overrides")
     au.add_argument("--sims", type=int, default=2000)
-    au.add_argument("--price-model", default="feeds", choices=["feeds", "sim"])
+    au.add_argument("--price-model", default="both", choices=["both", "feeds", "sim"])
     s = sub.add_parser("slate"); s.set_defaults(fn=cmd_slate)
     s.add_argument("--date", required=True); s.add_argument("--sims", type=int, default=2000)
     c = sub.add_parser("capture"); c.set_defaults(fn=cmd_capture)
     c.add_argument("--date", required=True); c.add_argument("--slot", required=True)
     c.add_argument("--stats"); c.add_argument("--overrides")
-    c.add_argument("--price-model", default="feeds", choices=["feeds", "sim"])
+    c.add_argument("--price-model", default="both", choices=["both", "feeds", "sim"])
     g = sub.add_parser("grade"); g.set_defaults(fn=cmd_grade); g.add_argument("--date", required=True)
     cf = sub.add_parser("check-feeds"); cf.set_defaults(fn=cmd_check_feeds)
     cf.add_argument("--show", type=int, default=3)

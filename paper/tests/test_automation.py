@@ -238,7 +238,7 @@ def test_a_full_slate_day_runs_itself(tmp_path):
     # 10:30 ET: morning window opens -> slate built from RotoWire, morning captured
     assert A.auto(tmp_path, client, now=at(15, 30), log=log, n_sims=400, session=sess) == []
     assert store.board_slots(tmp_path, DAY) == ["morning"]
-    assert store.load_sim(tmp_path, DAY)[1] is None                  # feeds mode: no model to run
+    assert store.load_sim(tmp_path, DAY)[1] is not None              # `both`: draws exist for the combos
     from paper import feeds
     snap = feeds.load_snapshot(tmp_path, DAY, "morning")
     assert snap and {r["team"] for r in snap.values()} == {"BOS", "NYK"}
@@ -318,6 +318,27 @@ def test_each_capture_prices_off_the_feed_as_it_stood_then(tmp_path):
     A.auto(tmp_path, client, now=at(22, 40), log=lambda *_: None, session=sess)
     assert len(sess.urls) == n_morning + 3                           # 3 feeds re-fetched at the pregame capture
     assert feeds.load_snapshot(tmp_path, DAY, "pregame") and feeds.load_snapshot(tmp_path, DAY, "morning")
+
+
+def test_feeds_only_mode_runs_no_model(tmp_path):
+    pre = preseason()
+    client, sess = FakeOptic(pre, {"final": False}), FakeSession(pre)
+    assert A.auto(tmp_path, client, now=at(15, 30), log=lambda *_: None, session=sess, price_model="feeds") == []
+    assert store.load_sim(tmp_path, DAY)[1] is None and not (tmp_path / "inputs" / "preseason.csv").exists()
+    assert store.load_candidates(tmp_path, DAY) is not None
+
+
+def test_a_simulator_failure_does_not_block_the_feed_priced_captures(tmp_path):
+    pre = preseason()
+    client = FakeOptic(pre, {"final": False})
+    real = client.get_odds_for_fixtures
+    client.get_odds_for_fixtures = lambda ids, books, markets, **k: (
+        (_ for _ in ()).throw(RuntimeError("lines down")) if "point_spread" in markets else real(ids, books, markets, **k))
+    logs = []
+    errs = A.auto(tmp_path, client, now=at(15, 30), log=logs.append, session=FakeSession(pre))   # default: both
+    assert any("build slate" in e for e in errs)                      # the failure is surfaced (job goes red) ...
+    assert store.board_slots(tmp_path, DAY) == ["morning"]            # ... but the morning capture still happened
+    assert store.load_candidates(tmp_path, DAY)
 
 
 def test_sim_mode_still_works_for_combos_and_comparison(tmp_path):

@@ -126,3 +126,21 @@ def test_calibration_compares_realised_with_what_the_fit_implies(tmp_path):
     cal = feeds.calibration(tmp_path, ["d"])
     assert cal["pts"]["above"] == 1.0                                   # 20 points is above the ceiling of 8
     assert 0 <= cal["pts"]["exp_above"] < 0.5 and cal["pts"]["n"] == 1
+
+
+# The floor feed's first row, copied from the live feed: the high tail for TO/PF is HERE, in the floor.
+FLOOR_ALDAMA = {"id": "5428", "player": "Santi Aldama", "team": "DAL", "pos": "F", "G": "1", "DBLDBL": "0.00850",
+                "TRPDBL": "0.00000", "THREEPA": "0.00000", "THREEPM": "0.00000", "AST": "0.00000", "BLK": "0.00000",
+                "DREB": "0.00000", "FGA": "0.00000", "FGM": "0.00000", "FTA": "0.00000", "FTM": "0.00000",
+                "MIN": "2.50592", "OREB": "0.00000", "PF": "1.00000", "PTS": "0.00000", "REB": "0.00000",
+                "STL": "0.00000", "TO": "1.00000", "opp": "DEN"}
+
+
+def test_real_floor_row_confirms_the_direction_convention():
+    s = feeds.build_snapshot(feeds.parse_feed(MEAN[:1]), feeds.parse_feed([FLOOR_ALDAMA]), feeds.parse_feed(CEIL[:1]))[5428]
+    assert (s["pts_lo"], s["pts_hi"]) == (0.0, 8.0)            # floor 0 / ceiling 8
+    assert (s["tov_lo"], s["tov_hi"]) == (0.0, 1.0)            # ceiling feed 0, FLOOR feed 1: the low tail is the "ceiling"
+    assert (s["min_lo"], s["min_hi"]) == (pytest.approx(2.50592), pytest.approx(16.54108))
+    # and the fits are consistent with the published quartiles
+    b = feeds.FeedBook({5428: s})
+    assert all(b.fit(5428, st)[2] < 0.01 for st in ("pts", "reb", "ast", "tov", "threes"))

@@ -9,7 +9,7 @@ from the NFL dashboard repo (`personas.mjs`, `paper-filter.mjs`, `consensus.mjs`
 Needs one repo secret, `OPTICODDS_API_KEY`. Each run decides from the clock and the
 fixtures' tip times what is due:
 
-* **price source** (default, `--price-model feeds`): RotoWire's daily floor/median/ceiling
+* **price source** (default, `--price-model both`: singles from the feeds, combos from the simulator; `feeds` = singles only; `sim` = simulator only): RotoWire's daily floor/median/ceiling
   feeds, fetched AT EACH CAPTURE and stored per slot, so a pregame bet is priced off the feed
   as it stood at pregame (late minutes/injury news included). Nothing to train or simulate.
   Each stat becomes a negative binomial with the feed's mean, whose dispersion is the one whose
@@ -17,7 +17,9 @@ fixtures' tip times what is due:
   (for turnovers/fouls it is the LOW tail), so lower/upper quartile = min/max of the two feeds.
   `--price-model sim` instead runs this repo's simulator once a day (preseason sheet + logs +
   spread/total) and is the only way to price the combo markets (PRA etc.), which need a joint
-  distribution that three published marginals cannot give.
+  distribution that three published marginals cannot give. In `both` mode a combo needs BOTH the
+  day's draws and the player still listed in the feed (injured players are dropped from it), and a
+  simulator failure never blocks the feed-priced captures.
 * **morning** every fixture from 10:00 ET; **pregame** each fixture ~2h before ITS tip;
   **closing** each fixture in the last ~25 min before ITS tip (reference only, never bet)
 * **grade** a date once every captured fixture is `completed`, the box score reproduces
@@ -58,7 +60,7 @@ Half/quarter/first-N-minutes markets, (Combo)/(Either)/(Each)/H2H markets, team
 totals, first-basket and most-X markets, Player Threes Attempted. See `markets.py`.
 
 ## Verified vs not
-Verified by `pytest paper/tests` (81 tests, offline): pricing, de-vig, consensus and
+Verified by `pytest paper/tests` (88 tests, offline): pricing, de-vig, consensus and
 weight fitting (recovers a planted lead), personas, filters, normalization, crosswalk,
 settlement incl. DNP/pending, CLV, point-in-time fitting, client batching/retry/key
 handling, the scheduler's windows, player-results parsing against the real payload
