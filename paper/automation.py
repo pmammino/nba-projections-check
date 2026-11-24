@@ -255,8 +255,41 @@ def write_report(root, path=None):
                          f"{c['inside'] * 100:.0f}% / {c['exp_inside'] * 100:.0f}% |")
     out = Path(path or Path(root) / "report.md")
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text("\n".join(lines) + "\n")
+    text = "\n".join(lines) + "\n"
+    stamp = lambda t: "\n".join(l for l in t.splitlines() if not l.startswith("_Updated"))  # noqa: E731
+    if not out.exists() or stamp(out.read_text()) != stamp(text):   # an unchanged report is not rewritten:
+        out.write_text(text)                                        # otherwise every run is a data commit
     return out
+
+
+PROBE_EVERY = timedelta(minutes=30)
+
+
+def _probe_file(root):
+    return inputs_dir(root) / "fixtures_probe.json"
+
+
+def fixtures_with_throttle(root, client, date, now, log):
+    """List the slate's fixtures, but after an EMPTY answer wait PROBE_EVERY before asking again.
+    A day with no games (or none posted yet) otherwise spends several requests every 15 minutes
+    for nothing. Games posted late are picked up within PROBE_EVERY, well inside the 2h pregame window."""
+    import json
+    path = _probe_file(root)
+    if path.exists():
+        try:
+            until = datetime.fromisoformat(json.loads(path.read_text())["until"])
+            if now < until:
+                log(f"  no fixtures at the last check; asking again after {until:%H:%MZ}")
+                return []
+        except (ValueError, KeyError):
+            pass
+    fixtures = cap.list_fixtures(client, date, log)
+    if fixtures:
+        path.unlink(missing_ok=True)
+    else:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"until": (now + PROBE_EVERY).isoformat()}))
+    return fixtures
 
 
 def auto(root, client, now=None, overrides=None, log=print, n_sims=2000, session=None,
@@ -276,7 +309,7 @@ def auto(root, client, now=None, overrides=None, log=print, n_sims=2000, session
     from .markets import COMBO_STATS, DEFAULT_STATS
     stats = DEFAULT_STATS + COMBO_STATS if price_model in ("both", "sim") else DEFAULT_STATS
     log(f"auto @ {now:%Y-%m-%d %H:%MZ}  slate {date}")
-    fixtures = step("list fixtures", lambda: cap.list_fixtures(client, date, log)) or []
+    fixtures = step("list fixtures", lambda: fixtures_with_throttle(root, client, date, now, log)) or []
     captured = captured_fixtures(root, date)
     due, missed = plan_captures(now, fixtures, captured)
     log(f"  due: " + (", ".join(f"{k} x{len(v)}" for k, v in due.items() if v) or "nothing")

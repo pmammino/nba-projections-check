@@ -122,9 +122,20 @@ def build_summary(root, results=None, pool=None):
 
 
 def _write(path: Path, obj):
+    """Write strict JSON, but leave the file alone when only `generatedAt` differs: an unchanged
+    export must not become a commit on the data branch every 15 minutes."""
     path.parent.mkdir(parents=True, exist_ok=True)
+    text = json.dumps(obj, separators=(",", ":"), allow_nan=False)
+    if path.exists():
+        try:
+            old = json.loads(path.read_text())
+            strip = lambda o: {k: v for k, v in o.items() if k != "generatedAt"} if isinstance(o, dict) else o  # noqa: E731
+            if strip(old) == strip(json.loads(text)):
+                return
+        except ValueError:
+            pass
     tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(obj, separators=(",", ":"), allow_nan=False))
+    tmp.write_text(text)
     tmp.replace(path)
 
 
