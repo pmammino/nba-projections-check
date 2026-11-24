@@ -1,0 +1,5 @@
+date,persona,slot,player_id,name,team,opp,stat,book,line,side,odds,implied,fair,our_prob,edge,model_edge,p_sharp,n_books,stake_units,scaled_by,bankroll_before,status,actual,pnl_units,close_fair,clv
+2026-11-24,firehose,morning,5159,Desmond Bane,ORL,DET,reb,betrivers,3.5,under,100.0,0.5,0.4646,0.6059,0.1059,0.14129999999999998,0.4581,8,1.0,1.0,100.0,pending,,,,
+2026-11-24,firehose,morning,5159,Desmond Bane,ORL,DET,pts,draftkings,29.5,over,1120.0,0.082,0.0766,0.1652,0.08320000000000001,0.08860000000000001,,6,1.0,1.0,100.0,pending,,,,
+2026-11-24,firehose,morning,5159,Desmond Bane,ORL,DET,stl,hardrock,1.5,under,-175.0,0.6364,0.5888,0.6994,0.06300000000000006,0.11060000000000003,,4,1.0,1.0,100.0,pending,,,,
+2026-11-24,firehose,morning,5159,Desmond Bane,ORL,DET,ast,fanduel,5.5,over,868.0,0.1033,0.0965,0.1632,0.05990000000000001,0.06670000000000001,,6,1.0,1.0,100.0,pending,,,,

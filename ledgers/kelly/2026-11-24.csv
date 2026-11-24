@@ -1,0 +1,2 @@
+date,persona,slot,player_id,name,team,opp,stat,book,line,side,odds,implied,fair,our_prob,edge,model_edge,p_sharp,n_books,stake_units,scaled_by,bankroll_before,status,actual,pnl_units,close_fair,clv
+2026-11-24,kelly,morning,5159,Desmond Bane,ORL,DET,pts,draftkings,29.5,over,1120.0,0.082,0.0766,0.1652,0.08320000000000001,0.08860000000000001,,6,2.2666,1.0,100.0,pending,,,,
