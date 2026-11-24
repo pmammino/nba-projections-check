@@ -12,6 +12,7 @@ date, so re-running never leaks a later day's information.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from . import crosswalk, store
 from .books import books_to_fetch, resolve_book_ids
@@ -88,6 +89,8 @@ def capture(root, client, date, slot, fixture_ids, stats=None, books=None, overr
         raise RuntimeError(f"No slate for {date}: build it first (it saves the players and draws).")
     rows, diag = fetch_board_rows(client, fixture_ids, stats, books)
     matched, unmatched = crosswalk.resolve(rows, players, overrides)
+    from . import results as _R
+    _R.remember_ids(Path(root) / "inputs" / "optic_ids.csv", matched)
     store.save_board(root, date, slot, merge_board(store.load_board(root, date, slot), matched, fixture_ids))
     rebuild_candidates(root, date)
     return {"fixtures": len(fixture_ids), "quotes": len(rows), "matched": len(matched),

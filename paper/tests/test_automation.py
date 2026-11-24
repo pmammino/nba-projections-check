@@ -1,0 +1,263 @@
+"""The whole scheduler against fakes: RotoWire JSON -> slate (real model) -> morning /
+pregame / closing captures per fixture -> grading from Optic player-results -> ledgers
++ report. Everything external is faked; everything internal is real."""
+from datetime import datetime, timedelta, timezone
+
+import numpy as np
+import pytest
+
+from paper import automation as A, store
+from test_results import fixture as results_fixture, player as box_player, team_results
+from test_slate import preseason
+
+UTC = timezone.utc
+TIP = datetime(2026, 11, 25, 0, 30, tzinfo=UTC)          # 7:30pm ET on slate day 2026-11-24
+DAY = "2026-11-24"
+FX = "FXBOSNYK"
+
+
+def at(h, m=0, day=24):
+    return datetime(2026, 11, day, h, m, tzinfo=UTC)
+
+
+# ---- scheduling (pure) -------------------------------------------------------------
+def fx(fid, tip):
+    return {"id": fid, "start": tip}
+
+
+def test_slate_day_spans_ten_utc_to_ten_utc():
+    assert A.slate_date(at(9, 59, 25)) == "2026-11-24"      # still last night's slate
+    assert A.slate_date(at(10, 0, 25)) == "2026-11-25"
+    assert A.slate_date(at(0, 10, 25)) == "2026-11-24"      # after UTC midnight, still the 24th's tips
+
+
+def test_nothing_due_before_the_morning_window_or_after_tip():
+    due, missed = A.plan_captures(at(12), [fx("a", TIP)], {})
+    assert not any(due.values())
+    due, _ = A.plan_captures(TIP + timedelta(minutes=1), [fx("a", TIP)], {})
+    assert not any(due.values())                              # tipped: nothing can be bet
+
+
+def test_each_slot_opens_relative_to_its_own_tip():
+    now = at(22, 40)
+    early = fx("early", now + timedelta(hours=1, minutes=30))    # tips in 90 min
+    late = fx("late", now + timedelta(hours=4, minutes=30))      # tips in 4.5 h
+    due, missed = A.plan_captures(now, [early, late], {})
+    assert due["morning"] == ["early", "late"]
+    assert due["pregame"] == ["early"]                            # inside ITS 2h window; late is still too far out
+    assert due["closing"] == [] and missed == []
+    # 20 minutes before the late game: only it is closing, and the early one has tipped
+    now2 = late["start"] - timedelta(minutes=20)
+    due, _ = A.plan_captures(now2, [early, late], {"morning": {"early", "late"}, "pregame": {"early", "late"}})
+    assert due["closing"] == ["late"]
+
+
+def test_captured_fixtures_are_not_captured_twice_and_missed_windows_are_reported():
+    f = fx("a", TIP)
+    have = {"morning": {"a"}, "pregame": {"a"}}
+    due, missed = A.plan_captures(TIP - timedelta(minutes=20), [f], have)
+    assert due["closing"] == ["a"] and not due["morning"] and not due["pregame"]
+    due, missed = A.plan_captures(TIP - timedelta(minutes=20), [f], {"morning": {"a"}})
+    assert ("pregame", "a") in missed and not due["pregame"]  # never backfilled with a later price
+
+
+def test_merge_board_replaces_only_the_named_fixtures():
+    from paper.capture import merge_board
+    old = [{"fixture_id": "a", "v": 1}, {"fixture_id": "b", "v": 1}]
+    assert merge_board(old, [{"fixture_id": "a", "v": 2}], ["a"]) == [{"fixture_id": "b", "v": 1}, {"fixture_id": "a", "v": 2}]
+
+
+# ---- fakes --------------------------------------------------------------------------
+class FakeSession:
+    """RotoWire: the preseason sheet as JSON, with RotoWire-style column names."""
+    def __init__(self, pre):
+        rows = pre.rename(columns={"ast": "assists", "stl": "steals", "blk": "blocks", "tov": "turnovers"}).to_dict("records")
+        self.rows = rows
+
+    def get(self, url, headers=None, timeout=None):
+        rows = self.rows
+
+        class R:
+            ok = True
+            status_code = 200
+            text = ""
+            def json(self_):
+                return rows
+        return R()
+
+
+def hexid(name):
+    return "HX" + "".join(c for c in name if c.isalnum())[:10].upper()
+
+
+class FakeOptic:
+    def __init__(self, pre, state):
+        self.pre, self.state = pre, state          # state: {"results": bool}
+        self.calls = []
+
+    # fixtures: one BOS (home) vs NYK game
+    def get_fixtures(self, start_date=None, end_date=None, status=None, **_):
+        self.calls.append(("fixtures", status))
+        done = self.state.get("final")
+        if status == "completed":
+            return [{"id": FX, "status": "completed"}] if done else []
+        return [{"id": FX, "start_date": "2026-11-25T00:30:00Z", "status": "unplayed", "is_live": False}]
+
+    def get_sportsbooks(self):
+        return [{"id": b, "name": b} for b in
+                ("draftkings", "fanduel", "betmgm", "caesars", "betrivers", "hardrock", "thescore", "pinnacle", "circa_sports")]
+
+    def _fixture(self, odds):
+        return {"id": FX, "start_date": "2026-11-25T00:30:00Z", "status": "unplayed", "is_live": False,
+                "home_competitors": [{"id": "HOME", "name": "Boston Celtics", "abbreviation": "BOS"}],
+                "away_competitors": [{"id": "AWAY", "name": "New York Knicks", "abbreviation": "NY"}], "odds": odds}
+
+    def get_odds_for_fixtures(self, fixture_ids, sportsbooks, markets, **_):
+        if "point_spread" in markets:
+            return [{"data": [self._fixture([
+                {"market_id": "point_spread", "selection": "Boston Celtics", "points": -4.5},
+                {"market_id": "point_spread", "selection": "New York Knicks", "points": 4.5},
+                {"market_id": "total_points", "selection": "Over", "points": 224.5}])]}]
+        odds = []
+        for _, p in self.pre.iterrows():
+            if p["team"] not in ("BOS", "NYK") or p["minutes"] / p["games"] < 20:
+                continue
+            name = f"{p['firstname']} {p['lastname']}"
+            line = max(1.5, round(p["minutes"] / p["games"] * (p["fgm"] * 2 + p["pt3m"] + p["ftm"]) / p["minutes"]) - 0.5)
+            for book, (o, u) in {"draftkings": (+105, -125), "fanduel": (-120, 100), "betmgm": (-115, -105),
+                                 "caesars": (-118, -102), "pinnacle": (-112, -108)}.items():
+                for side, price in (("over", o), ("under", u)):
+                    odds.append({"sportsbook": book, "market": "Player Points", "market_id": "player_points",
+                                 "selection": name, "selection_line": side, "price": price, "points": line,
+                                 "player_id": hexid(name), "team_id": None, "timestamp": 1.0,
+                                 "limits": {"max": 500}})
+        return [{"data": [self._fixture(odds)]}]
+
+    # results
+    def _box(self):
+        rng = np.random.default_rng(7)
+        out = []
+        for _, p in self.pre.iterrows():
+            if p["team"] not in ("BOS", "NYK") or p["minutes"] / p["games"] < 20:
+                continue
+            name = f"{p['firstname']} {p['lastname']}"
+            fgm = int(rng.integers(2, 12))
+            out.append((name, "HOME" if p["team"] == "BOS" else "AWAY", dict(
+                field_goals_made=fgm, field_goals_attempted=fgm * 2, three_point_field_goals_made=1,
+                three_point_field_goals_attempted=3, free_throws_made=2, free_throws_attempted=3,
+                offensive_rebounds=1, defensive_rebounds=int(rng.integers(1, 9)), assists=int(rng.integers(0, 9)),
+                steals=1, blocks=0, turnovers=2, fouls=2)))
+        return out
+
+    def _rows(self):
+        return [box_player(hexid(n), n, tid, 1800, **s) for n, tid, s in self._box()]
+
+    def get_fixture_results(self, fixture_ids):
+        from paper import results as R
+        rows = []
+        for r in R.parse_player_results([{"fixture": results_fixture(), "results": self._rows()}])[0]["rows"]:
+            rows.append({**r, "team": "CLE" if r["team"] == "CLE" else r["team"]})
+        # the shared fixture helper uses CLE/IND ids; re-key players onto BOS/NYK for this game
+        return self._team_totals()
+
+    def _team_totals(self):
+        def tot(tid):
+            s = [x for n, t, x in self._box() if t == tid]
+            return ({"total": sum(2 * x["field_goals_made"] + x["three_point_field_goals_made"] + x["free_throws_made"] for x in s)},
+                    {"assists": sum(x["assists"] for x in s), "blocks": 0, "steals": sum(x["steals"] for x in s),
+                     "field_goals_attempted": sum(x["field_goals_attempted"] for x in s),
+                     "free_throws_attempted": sum(x["free_throws_attempted"] for x in s),
+                     "three_point_field_goals_made": sum(x["three_point_field_goals_made"] for x in s)})
+        (hs, hst), (as_, ast) = tot("HOME"), tot("AWAY")
+        fx_ = self._res_fixture()
+        return [{"fixture": fx_, "scores": {"home": hs, "away": as_},
+                 "stats": {"home": [{"period": "all", "stats": hst}], "away": [{"period": "all", "stats": ast}]}}]
+
+    def _res_fixture(self):
+        done = self.state.get("final")
+        return {"id": FX, "start_date": "2026-11-25T00:30:00Z", "status": "completed" if done else "inprogress",
+                "home_competitors": [{"id": "HOME", "name": "Boston Celtics", "abbreviation": "BOS"}],
+                "away_competitors": [{"id": "AWAY", "name": "New York Knicks", "abbreviation": "NY"}]}
+
+    def get_player_results(self, fixture_ids):
+        rows = []
+        for n, tid, s in self._box():
+            rows.append(box_player(hexid(n), n, tid, 1800, **s))
+        return [{"fixture": self._res_fixture(), "results": rows}]
+
+
+def test_a_full_slate_day_runs_itself(tmp_path):
+    pre = preseason()
+    state = {"final": False}
+    client, sess = FakeOptic(pre, state), FakeSession(pre)
+    logs = []
+    log = logs.append
+
+    # 10:30 ET: morning window opens -> slate built from RotoWire, morning captured
+    assert A.auto(tmp_path, client, now=at(15, 30), log=log, n_sims=400, session=sess) == []
+    assert store.load_sim(tmp_path, DAY)[1] is not None and (tmp_path / "inputs" / "preseason.csv").exists()
+    assert store.board_slots(tmp_path, DAY) == ["morning"]
+    ids = {r["fixture_id"] for r in store.load_board(tmp_path, DAY, "morning")}
+    assert ids == {FX}
+    assert (tmp_path / "inputs" / "optic_ids.csv").exists()   # Optic id -> our player_id, persisted
+
+    # running again in the same window does nothing new (no double capture)
+    assert A.auto(tmp_path, client, now=at(15, 45), log=log, n_sims=400, session=sess) == []
+    assert store.board_slots(tmp_path, DAY) == ["morning"]
+
+    # ~2h before tip -> pregame; ~20 min before -> closing
+    assert A.auto(tmp_path, client, now=at(22, 40), log=log, n_sims=400, session=sess) == []
+    assert A.auto(tmp_path, client, now=at(0, 12, 25), log=log, n_sims=400, session=sess) == []
+    assert store.board_slots(tmp_path, DAY) == ["closing", "morning", "pregame"]
+    assert store.load_candidates(tmp_path, DAY)
+
+    # game over -> graded from Optic player-results, ledgers + report written
+    state["final"] = True
+    assert A.auto(tmp_path, client, now=at(12, 0, 25), log=log, n_sims=400, session=sess) == []
+    act = store.load_actuals(tmp_path, DAY)
+    assert act and {a["team"] for a in act} == {"BOS", "NYK"}
+    ledger = tmp_path / "ledgers" / "firehose" / f"{DAY}.csv"
+    assert ledger.exists()
+    import csv
+    rows = list(csv.DictReader(open(ledger)))
+    assert rows and all(r["status"] in ("won", "lost", "push") for r in rows)     # settled by Optic id, none pending
+    assert all(r["book"] != "pinnacle" for r in rows)
+    report = (tmp_path / "report.md").read_text()
+    assert "Personas" in report and "Filtered paper trading" in report
+    assert (tmp_path / "inputs" / "logs.csv").exists()                            # game logs grew from the same results
+    # grading is idempotent
+    n = len(store.load_actuals(tmp_path, DAY))
+    A.auto(tmp_path, client, now=at(13, 0, 25), log=log, n_sims=400, session=sess)
+    assert len(store.load_actuals(tmp_path, DAY)) == n
+
+
+def test_a_box_that_disagrees_with_optic_is_not_graded(tmp_path):
+    pre = preseason()
+    state = {"final": False}
+    client, sess = FakeOptic(pre, state), FakeSession(pre)
+    A.auto(tmp_path, client, now=at(15, 30), log=lambda *_: None, n_sims=400, session=sess)
+    state["final"] = True
+    orig = client.get_player_results
+
+    def tampered(ids):
+        data = orig(ids)
+        data[0]["results"][0]["market_stats"]["player_points"] += 5   # Optic's own grade disagrees with its box
+        return data
+    client.get_player_results = tampered
+    logs = []
+    A.auto(tmp_path, client, now=at(12, 0, 25), log=logs.append, n_sims=400, session=sess)
+    assert store.load_actuals(tmp_path, DAY) is None
+    assert any("disagrees with Optic" in l for l in logs)
+
+
+def test_one_failing_step_does_not_stop_the_others(tmp_path):
+    pre = preseason()
+    client = FakeOptic(pre, {"final": False})
+
+    class Boom(Exception):
+        pass
+    client.get_sportsbooks = lambda: (_ for _ in ()).throw(Boom("books down"))
+    logs = []
+    errs = A.auto(tmp_path, client, now=at(15, 30), log=logs.append, n_sims=400, session=FakeSession(pre))
+    assert any("capture morning" in e for e in errs)
+    assert (tmp_path / "report.md").exists()                      # the report step still ran

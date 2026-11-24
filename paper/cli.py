@@ -3,7 +3,7 @@
   auto            the one command the scheduler runs (every ~15 min): builds the day's slate,
                   captures whatever is due, grades finished dates, rebuilds ledgers + report.md
   discover        list live NBA markets/books; confirms the ids in markets.py
-  check-results   --date D   first live check of the results path (Optic + nba.com reconcile?)
+  check-results   --date D   first live check of the results path (Optic player-results reconcile?)
   backfill-logs   --through D   pull the season's box scores into the model's game logs
   slate / capture / grade   the individual steps of `auto`, for debugging
   replay          [--basis proj|pool|sharp]   replay every persona; print ROI table
@@ -52,9 +52,8 @@ def cmd_auto(a):
     from datetime import datetime, timezone
     from .automation import auto
     from .optic import OpticOddsClient
-    from .results import Results
     now = datetime.fromisoformat(a.now.replace("Z", "+00:00")) if a.now else datetime.now(timezone.utc)
-    errs = auto(a.root, OpticOddsClient(), Results(), now=now, overrides=_overrides(a.overrides), n_sims=a.sims)
+    errs = auto(a.root, OpticOddsClient(), now=now, overrides=_overrides(a.overrides), n_sims=a.sims)
     if errs:
         sys.exit(1)
 
@@ -63,8 +62,7 @@ def cmd_slate(a):
     from datetime import datetime, timezone
     from .automation import ensure_slate
     from .optic import OpticOddsClient
-    from .results import Results
-    ok = ensure_slate(a.root, a.date, OpticOddsClient(), Results(), datetime.now(timezone.utc), n_sims=a.sims)
+    ok = ensure_slate(a.root, a.date, OpticOddsClient(), datetime.now(timezone.utc), n_sims=a.sims)
     if not ok:
         sys.exit("slate not built (no fixtures or no spread/total lines yet)")
 
@@ -85,41 +83,37 @@ def cmd_capture(a):
 def cmd_grade(a):
     from .automation import grade_date
     from .optic import OpticOddsClient
-    from .results import Results
-    ok = grade_date(a.root, a.date, OpticOddsClient(), Results())
+    ok = grade_date(a.root, a.date, OpticOddsClient())
     print(f"{a.date}: {'graded' if ok else 'not graded (games unfinished or box score did not reconcile)'}")
 
 
 def cmd_check_results(a):
-    """First live check of the results path: what the feeds returned, and whether
-    the box score reconciles with Optic's team totals."""
+    """First live check of the results path: what Optic returned, and whether each box
+    score passes both integrity checks."""
     from . import results as R
     from .automation import board_fixture_ids
     from .optic import OpticOddsClient
-    c, res = OpticOddsClient(), R.Results()
+    c = OpticOddsClient()
     ids = a.fixture or board_fixture_ids(a.root, a.date)
-    games = R.parse_optic_results(c.get_fixture_results(ids))
-    print(f"optic: {len(games)} fixtures, {sum(g['completed'] for g in games)} completed")
-    for g in games:
-        sched = res.find_game(g["home"], g["away"], a.date)
-        if not sched:
-            print(f"  {g['away']}@{g['home']}: not found on the nba.com schedule")
-            continue
-        final, box = res.box(sched["game_id"], sched["date"])
-        bad = R.verify_box(box, g)
-        print(f"  {g['away']}@{g['home']}: cdn final={final} players={len(box)} "
-              f"{'OK' if not bad else 'MISMATCH ' + '; '.join(bad)}")
+    teams = {g["fixture_id"]: g for g in R.parse_optic_results(c.get_fixture_results(ids))}
+    players = R.parse_player_results(c.get_player_results(ids))
+    print(f"{len(teams)} fixtures, {sum(g['completed'] for g in teams.values())} completed")
+    for g in players:
+        t = teams.get(g["fixture_id"])
+        bad = R.verify_box(g["rows"], t) if t else ["no team result"]
+        print(f"  {g['away']}@{g['home']}: {g['status']}, {len(g['rows'])} players played, "
+              f"{'box OK' if not g['errors'] and not bad else 'PROBLEM ' + '; '.join((g['errors'] + bad)[:3])}")
 
 
 def cmd_backfill_logs(a):
     from datetime import datetime, timezone
     from . import sources
     from .automation import inputs_dir, season_start, update_logs
-    from .results import Results
+    from .optic import OpticOddsClient
     from . import slate
     now = datetime.now(timezone.utc)
     pre = sources.load_preseason(inputs_dir(a.root) / "preseason.csv")
-    update_logs(a.root, Results(), slate.slate_players(pre), a.through, start=a.start or season_start(now))
+    update_logs(a.root, OpticOddsClient(), slate.slate_players(pre), a.through, start=a.start or season_start(now))
 
 
 def cmd_replay(a):

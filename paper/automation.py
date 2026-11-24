@@ -87,27 +87,41 @@ def season_start(now: datetime) -> str:
     return f"{y}-10-01"
 
 
-def update_logs(root, results, players, through_date, start=None, sleep=0.15, log=print):
-    """Bring logs.csv up to `through_date` (inclusive) from the results feed.
-    Idempotent and incremental: only dates after the last logged one are pulled."""
+def completed_fixture_ids(client, date):
+    """Completed fixtures on a slate date (UTC window, same as the odds capture)."""
+    start, end = cap.slate_window(date)
+    return [f["id"] for f in client.get_fixtures(start_date=start, end_date=end, status="completed")
+            if f.get("id")]
+
+
+def update_logs(root, client, players, through_date, start=None, log=print):
+    """Bring logs.csv (the model's game logs) up to `through_date` from Optic's
+    player-results. Idempotent and incremental: only dates after the last logged
+    one are pulled; the first run backfills from `start` (the season's opening)."""
     from . import results as R
     path = inputs_dir(root) / "logs.csv"
+    idmap_path = inputs_dir(root) / "optic_ids.csv"
     have = R.read_logs(path)
     last = have["game_date"].max().strftime("%Y-%m-%d") if len(have) else None
     first = (datetime.strptime(last, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d") if last else start
     if first is None or first > through_date:
         return have
-    added, unmatched = 0, {}
+    added, unmatched, bad_games = 0, {}, 0
     for d in R.season_dates(first, through_date):
-        _, rows, games = results.day(d)
-        if not rows:
+        ids = completed_fixture_ids(client, d)
+        if not ids:
             continue
-        matched, un = R.attach_player_ids(rows, players)
-        added += R.append_logs(path, R.to_logs(matched))
-        for u in un:
-            unmatched[u["name"]] = u["reason"]
-        time.sleep(sleep)
+        for g in R.parse_player_results(client.get_player_results(ids)):
+            if not g["completed"] or g["errors"]:
+                bad_games += 1                      # never log a box that disagrees with Optic's own grading
+                continue
+            matched, un = R.attach_player_ids(g["rows"], players, R.read_id_map(idmap_path))
+            R.remember_ids(idmap_path, matched)
+            added += R.append_logs(path, R.to_logs(matched))
+            for u in un:
+                unmatched[u["name"]] = u["reason"]
     log(f"  logs: +{added} player-games through {through_date}"
+        + (f"; {bad_games} games skipped (not final / disagreed with Optic)" if bad_games else "")
         + (f"; {len(unmatched)} unmatched names (e.g. {', '.join(list(unmatched)[:5])})" if unmatched else ""))
     return R.read_logs(path)
 
@@ -122,7 +136,7 @@ def games_for(client, fixtures_ids, books=("pinnacle", "draftkings")):
     return None
 
 
-def ensure_slate(root, date, client, results, now, n_sims=2000, log=print, session=None):
+def ensure_slate(root, date, client, now, n_sims=2000, log=print, session=None):
     """Build the day's draws once. Returns True when a slate exists."""
     if store.load_sim(root, date)[1] is not None and cap.load_slate_players(root, date) is not None:
         return True
@@ -133,7 +147,7 @@ def ensure_slate(root, date, client, results, now, n_sims=2000, log=print, sessi
     if not fixtures:
         log(f"  {date}: no fixtures yet")
         return False
-    logs = update_logs(root, results, players, (now - timedelta(days=1)).strftime("%Y-%m-%d"),
+    logs = update_logs(root, client, players, (now - timedelta(days=1)).strftime("%Y-%m-%d"),
                        start=season_start(now), log=log)
     games = games_for(client, [f["id"] for f in fixtures])
     if games is None:
@@ -160,46 +174,49 @@ def board_fixture_ids(root, date):
     return sorted(ids)
 
 
-def grade_date(root, date, client, results, log=print):
-    """Grade one date if, and only if, every fixture we captured is final AND its
-    box score reconciles with Optic's team totals. Returns True when saved."""
+def grade_date(root, date, client, log=print):
+    """Grade one date if, and only if, every captured fixture is final AND every
+    box score passes both integrity checks (see results.py). Returns True if saved."""
     from . import actuals, results as R
     fixture_ids = board_fixture_ids(root, date)
     if not fixture_ids:
         return False
-    games = R.parse_optic_results(client.get_fixture_results(fixture_ids))
-    live = [g for g in games if not g["dead"]]
-    if len(games) < len(fixture_ids) or not all(g["completed"] for g in live) or not live:
-        return False                                   # not everything has finished yet
+    teams = R.parse_optic_results(client.get_fixture_results(fixture_ids))
+    live = [g for g in teams if not g["dead"]]
+    if len(teams) < len(fixture_ids) or not live or not all(g["completed"] for g in live):
+        return False                                   # something has not finished yet
+    by_fx = {g["fixture_id"]: g for g in R.parse_player_results(
+        client.get_player_results([g["fixture_id"] for g in live]))}
     rows = []
-    for g in live:
-        sched = results.find_game(g["home"], g["away"], date)
-        if sched is None:
-            log(f"  grade {date}: {g['away']}@{g['home']} not on the nba.com schedule; will retry")
+    for t in live:
+        g = by_fx.get(t["fixture_id"])
+        if g is None or not g["completed"]:
             return False
-        final, box = results.box(sched["game_id"], sched["date"])
-        if not final:
-            return False                               # CDN lags Optic: retry next run
-        bad = R.verify_box(box, g)
+        if g["errors"]:
+            log(f"  grade {date}: {t['away']}@{t['home']} box disagrees with Optic's grading "
+                f"({'; '.join(g['errors'][:3])}); will retry")
+            return False
+        bad = R.verify_box(g["rows"], t)
         if bad:
-            log(f"  grade {date}: {g['away']}@{g['home']} box score does not reconcile "
+            log(f"  grade {date}: {t['away']}@{t['home']} box does not reconcile with team totals "
                 f"({'; '.join(bad[:3])}); will retry")
             return False
-        rows += box
+        rows += g["rows"]
     players = cap.load_slate_players(root, date) or []
-    matched, un = R.attach_player_ids(rows, players)
+    idmap_path = inputs_dir(root) / "optic_ids.csv"
+    matched, un = R.attach_player_ids(rows, players, R.read_id_map(idmap_path))
+    R.remember_ids(idmap_path, matched)
     store.save_actuals(root, date, actuals.actuals_from_rows(matched, date))
-    from . import results as _r
-    _r.append_logs(inputs_dir(root) / "logs.csv", _r.to_logs(matched))
+    R.append_logs(inputs_dir(root) / "logs.csv", R.to_logs(matched))
     if un:
-        log(f"  grade {date}: {len(un)} box-score names unmatched, e.g. {', '.join(u['name'] for u in un[:5])}")
+        log(f"  grade {date}: {len(un)} box-score names not on the slate, e.g. {', '.join(u['name'] for u in un[:5])}")
     return True
 
 
-def grade_pending(root, client, results, log=print):
+def grade_pending(root, client, log=print):
     """Save box scores for every captured date that has newly become fully final."""
     done = [d for d in store.all_dates(root)
-            if store.load_actuals(root, d) is None and grade_date(root, d, client, results, log)]
+            if store.load_actuals(root, d) is None and grade_date(root, d, client, log)]
     if done:
         log(f"  graded: {', '.join(done)}")
     return done
@@ -231,7 +248,7 @@ def write_report(root, path=None):
     return out
 
 
-def auto(root, client, results, now=None, overrides=None, log=print, n_sims=2000, session=None):
+def auto(root, client, now=None, overrides=None, log=print, n_sims=2000, session=None):
     now = now or datetime.now(timezone.utc)
     date = slate_date(now)
     errors = []
@@ -251,7 +268,7 @@ def auto(root, client, results, now=None, overrides=None, log=print, n_sims=2000
     for slot, fid in missed:
         log(f"  missed {slot} window for fixture {fid}; skipped (never backfilled with a later price)")
     if any(due.values()):
-        if step("build slate", lambda: ensure_slate(root, date, client, results, now, n_sims, log, session)):
+        if step("build slate", lambda: ensure_slate(root, date, client, now, n_sims, log, session)):
             for slot in SLOT_ORDER:
                 if due[slot]:
                     s = step(f"capture {slot}", lambda slot=slot: cap.capture(
@@ -259,6 +276,6 @@ def auto(root, client, results, now=None, overrides=None, log=print, n_sims=2000
                     if s:
                         log(f"  {slot}: {s['fixtures']} fixtures, {s['matched']}/{s['quotes']} quotes matched"
                             + (f", {len(s['unmatched'])} players unmatched" if s["unmatched"] else ""))
-    step("grade", lambda: grade_pending(root, client, results, log))
+    step("grade", lambda: grade_pending(root, client, log))
     step("report", lambda: write_report(root))
     return errors

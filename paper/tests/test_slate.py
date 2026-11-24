@@ -18,7 +18,7 @@ def preseason(teams=("BOS", "NYK"), per_team=10, seed=0):
             g = 70
             mins = mpg * g
             fga = mins * rng.uniform(.38, .5) * (1.2 if i < 3 else 0.8) / 1.0 * 0.45
-            rows.append({"newsid": nid, "firstname": f"{t}", "lastname": f"Player{i}", "team": t,
+            rows.append({"newsid": nid, "firstname": f"{t}", "lastname": f"Player{'ABCDEFGHIJ'[i]}", "team": t,
                          "position": ["G", "F", "C"][i % 3], "games": g, "minutes": mins,
                          "fga": fga, "fgm": fga * .47, "pt3a": fga * .38, "pt3m": fga * .38 * .36,
                          "fta": fga * .25, "ftm": fga * .25 * .78, "oreb": mins * .03, "dreb": mins * .12,

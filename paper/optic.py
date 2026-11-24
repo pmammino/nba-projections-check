@@ -188,11 +188,26 @@ class OpticOddsClient:
     # ---- results ---------------------------------------------------------
     def get_fixture_results(self, fixture_ids):
         """/fixtures/results: final status, scores and TEAM stats per fixture
-        (confirmed shape; it carries no player lines, so it cannot settle player
-        props by itself). `fixture_id` is sent repeated, 5 per request."""
+        (confirmed shape). `fixture_id` is sent repeated, 5 per request."""
         out = []
         for fx in chunk(list(fixture_ids), MAX_FIXTURES):
             out.extend(unwrap(self.get("/fixtures/results", {"fixture_id": fx})))
+        return out
+
+    def get_player_results(self, fixture_ids):
+        """/fixtures/player-results: per-player stats + market_stats (confirmed
+        shape). Batched like the other endpoints; if a batch is rejected with a 4xx
+        (the batch limit is not documented in what we have), falls back to one
+        fixture per request rather than failing the day."""
+        out = []
+        for fx in chunk(list(fixture_ids), MAX_FIXTURES):
+            try:
+                out.extend(unwrap(self.get("/fixtures/player-results", {"fixture_id": fx})))
+            except OpticOddsError as err:
+                if len(fx) == 1 or not (err.status and 400 <= err.status < 500 and err.status != 429):
+                    raise
+                for one in fx:
+                    out.extend(unwrap(self.get("/fixtures/player-results", {"fixture_id": [one]})))
         return out
 
 
