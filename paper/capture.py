@@ -34,33 +34,57 @@ def slate_window(date: str):
     return d0.strftime("%Y-%m-%dT%H:%M:%SZ"), (d0 + timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def list_fixtures(client, date, log=None):
-    """Unplayed fixtures for a slate date: [{id, start (datetime UTC)}]. When `log` is given,
-    says how many the API returned and why any were dropped, so an empty slate explains itself
-    (no games that day vs a status/date field that did not parse)."""
-    start, end = slate_window(date)
-    raw = client.get_fixtures(start_date=start, end_date=end)
+def _parse_start(f):
+    try:
+        return datetime.fromisoformat(str(f.get("start_date", "")).replace("Z", "+00:00")).astimezone(timezone.utc)
+    except ValueError:
+        return None
+
+
+def fixtures_in_window(client, date, status, log=None):
+    """Fixtures of one slate day with the given status: [{id, start (datetime UTC), status}].
+
+    The slate day is [date 10:00Z, date+1 10:00Z) so that US evening tips (which cross UTC
+    midnight) belong to the right day. The API is asked for a WIDER, date-level range and the
+    exact window is applied here: a live run returned last night's finished games for a
+    time-of-day window, so the API's own handling of the time part is not trusted. When `log` is
+    given it says what came back and why anything was dropped, so an empty slate explains itself."""
+    lo = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=timezone.utc) + timedelta(hours=10)
+    hi = lo + timedelta(days=1)
+    d0 = date
+    d2 = (lo + timedelta(days=2)).strftime("%Y-%m-%d")
+    try:
+        raw = client.get_fixtures(start_date=d0, end_date=d2, status=status)
+    except Exception as err:        # a status value the API rejects must not blind us: retry unfiltered
+        if log:
+            log(f"  fixtures: status={status!r} was rejected ({err}); retrying without it")
+        raw = client.get_fixtures(start_date=d0, end_date=d2)
     out, dropped = [], {}
     for f in raw:
-        why = None
-        ts = str(f.get("start_date", "")).replace("Z", "+00:00")
+        why, start = None, _parse_start(f)
         if not f.get("id"):
             why = "no id"
-        elif f.get("is_live"):
+        elif start is None:
+            why = f"unparseable start_date={f.get('start_date')!r}"
+        elif not lo <= start < hi:
+            why = "outside the slate window"
+        elif status == "unplayed" and f.get("is_live"):
             why = "live"
-        elif str(f.get("status", "")).lower() not in ("unplayed", "scheduled", ""):
+        elif status and str(f.get("status", "")).lower() not in (status, "scheduled", ""):
             why = f"status={f.get('status')}"
-        else:
-            try:
-                out.append({"id": f["id"], "start": datetime.fromisoformat(ts).astimezone(timezone.utc)})
-            except ValueError:
-                why = f"unparseable start_date={f.get('start_date')!r}"
         if why:
             dropped[why] = dropped.get(why, 0) + 1
+        else:
+            out.append({"id": f["id"], "start": start, "status": f.get("status")})
     if log:
-        log(f"  fixtures {start} .. {end}: API returned {len(raw)}, {len(out)} usable"
-            + (f"; dropped {dropped}" if dropped else ""))
+        log(f"  fixtures {d0}..{d2} status={status}: API returned {len(raw)}, {len(out)} in slate window "
+            f"[{lo:%m-%d %H:%MZ}, {hi:%m-%d %H:%MZ})" + (f"; dropped {dropped}" if dropped else ""))
     return sorted(out, key=lambda x: x["start"])
+
+
+def list_fixtures(client, date, log=None):
+    """Unplayed fixtures for a slate date: [{id, start}]."""
+    return fixtures_in_window(client, date, "unplayed", log)
 
 
 def fetch_board_rows(client, fixture_ids, stats=None, books=None):

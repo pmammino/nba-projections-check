@@ -88,10 +88,8 @@ def season_start(now: datetime) -> str:
 
 
 def completed_fixture_ids(client, date):
-    """Completed fixtures on a slate date (UTC window, same as the odds capture)."""
-    start, end = cap.slate_window(date)
-    return [f["id"] for f in client.get_fixtures(start_date=start, end_date=end, status="completed")
-            if f.get("id")]
+    """Completed fixtures on a slate date (same exact window as the odds capture)."""
+    return [f["id"] for f in cap.fixtures_in_window(client, date, "completed")]
 
 
 def update_logs(root, client, players, through_date, start=None, log=print):
