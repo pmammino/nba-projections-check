@@ -582,3 +582,56 @@ def test_a_truncated_feed_stops_the_capture_and_writes_nothing(tmp_path):
     assert any("capture morning" in e and "truncated or needs subscriber access" in e for e in errs)
     assert store.board_slots(tmp_path, DAY) == []                               # nothing saved
     assert not (tmp_path / "feeds" / DAY / "morning.csv").exists()
+
+
+# ---- self-healing after a run built on a truncated RotoWire sheet ---------------------------------------
+def test_a_game_with_one_player_on_the_board_is_not_captured_and_gets_redone(tmp_path, monkeypatch):
+    """Live: the first run matched one player (Bane) in ORL-DET; that game stayed 'captured' with one row."""
+    monkeypatch.setattr(A, "MIN_PLAYERS_PER_FIXTURE", 6)
+    rows = [{"fixture_id": "THIN", "player_id": "1", "stat": "pts", "line": 20.5, "sportsbook": "dk"}] * 40 + [
+        {"fixture_id": "FULL", "player_id": str(p), "stat": "pts", "line": 20.5, "sportsbook": "dk"} for p in range(8)]
+    store.save_board(tmp_path, DAY, "morning", [{**r, "over_odds": -110, "under_odds": -110, "one_sided": False} for r in rows])
+    cap = A.captured_fixtures(tmp_path, DAY)
+    assert cap["morning"] == {"FULL"}                                       # 40 rows but ONE player: not captured
+    due, _ = A.plan_captures(at(19, 30), [fx("THIN", TIP), fx("FULL", TIP)], cap)
+    assert due["morning"] == ["THIN"]
+
+
+def test_a_thin_cached_preseason_sheet_is_fetched_again(tmp_path, monkeypatch):
+    from paper import sources
+    pre = preseason()
+    cache = tmp_path / "preseason.csv"
+    pre.head(2).to_csv(cache, index=False)                                  # what the truncated run left behind
+    monkeypatch.setattr(sources, "MIN_ROWS", 10)
+    got = sources.load_preseason(cache, session=FakeSession(pre))
+    assert len(got) == len(pre) == len(__import__("pandas").read_csv(cache))   # refetched AND the cache replaced
+
+
+def test_a_thin_logs_file_is_discarded_and_rebuilt(tmp_path, monkeypatch):
+    import pandas as pd
+    from paper import results as R
+    pre = preseason()
+    path = A.inputs_dir(tmp_path) / "logs.csv"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    row = {c: 0 for c in R.LOG_COLS} | {"player_id": 1, "game_id": "g", "game_date": "2026-11-23", "team": "BOS", "player_name": "x"}
+    pd.DataFrame([row]).to_csv(path, index=False)                           # 1 player, dated up to yesterday: "up to date"
+    monkeypatch.setattr(A, "MIN_LOG_PLAYERS", 5)
+    asked, logs = [], []
+    monkeypatch.setattr(A, "completed_fixture_ids", lambda client, d: asked.append(d) or [])
+    A.update_logs(tmp_path, FakeOptic(pre, {}), [], "2026-11-23", start="2026-11-20", log=logs.append)
+    assert asked[0] == "2026-11-20"                                         # restarted from the season start, not from 11-24
+    assert any("rebuilding" in l for l in logs)
+
+
+def test_a_thin_stored_simulation_is_rebuilt(tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+    pre = preseason()
+    monkeypatch.setattr(A, "MIN_SIM_PLAYERS", 8)
+    store.save_sim(tmp_path, DAY, [1, 2], __import__("test_pipeline").make_sim())            # a 2-player draw from a bad day
+    A.cap.save_slate_players(tmp_path, DAY, [{"player_id": 1, "name": "x", "team": "BOS"}])
+    logs = []
+    ok = A.ensure_slate(tmp_path, DAY, FakeOptic(pre, {"final": False}), datetime(2026, 11, 24, 15, 30, tzinfo=timezone.utc),
+                        n_sims=200, log=logs.append, session=FakeSession(pre), save_players=False)
+    assert ok and any("rebuilding" in l for l in logs)
+    ids, sim = store.load_sim(tmp_path, DAY)
+    assert len(ids) >= 8 and sim["pts"].shape[1] == len(ids)
