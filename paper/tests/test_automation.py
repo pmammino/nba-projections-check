@@ -359,9 +359,44 @@ def test_an_empty_or_filtered_slate_explains_itself(tmp_path):
     logs = []
     A.auto(tmp_path, client, now=at(18, 45), log=logs.append, session=FakeSession(pre))
     text = "\n".join(logs)
-    assert "API returned 3, 0 usable" in text and "status=postponed" in text and "unparseable" in text and "live" in text
+    assert "API returned 3, 0 in slate window" in text and "status=postponed" in text and "unparseable" in text and "live" in text
     assert "due: nothing" in text
     client.get_fixtures = lambda **k: []
     logs.clear()
     A.auto(tmp_path, client, now=at(18, 45), log=logs.append, session=FakeSession(pre))
-    assert "API returned 0, 0 usable" in "\n".join(logs)
+    assert "API returned 0, 0 in slate window" in "\n".join(logs)
+
+
+def test_the_exact_window_is_applied_locally_whatever_the_api_returns(tmp_path):
+    """Live evidence: the API handed back 10 finished games for a time-of-day window. It is asked for a
+    wider, date-level range and the slate window is enforced here."""
+    pre = preseason()
+    client = FakeOptic(pre, {"final": False})
+    seen = {}
+    def wide(start_date=None, end_date=None, status=None, **k):
+        seen.update(start=start_date, end=end_date, status=status)
+        return [{"id": "LASTNIGHT", "start_date": "2026-11-24T01:00:00Z", "status": "unplayed"},   # before 10:00Z: last night's slate
+                {"id": "TONIGHT", "start_date": "2026-11-25T00:30:00Z", "status": "unplayed"},
+                {"id": "AFTERNOON", "start_date": "2026-11-24T22:00:00Z", "status": "unplayed"},
+                {"id": "TOMORROW", "start_date": "2026-11-26T00:30:00Z", "status": "unplayed"}]
+    client.get_fixtures = wide
+    from paper.capture import list_fixtures
+    got = list_fixtures(client, DAY)
+    assert [f["id"] for f in got] == ["AFTERNOON", "TONIGHT"]            # sorted, window-filtered
+    assert seen == {"start": "2026-11-24", "end": "2026-11-26", "status": "unplayed"}
+
+
+def test_a_status_the_api_rejects_falls_back_to_unfiltered(tmp_path):
+    pre = preseason()
+    client = FakeOptic(pre, {"final": False})
+    calls = []
+    def picky(start_date=None, end_date=None, status=None, **k):
+        calls.append(status)
+        if status is not None:
+            raise RuntimeError("HTTP 400 bad status")
+        return [{"id": "A", "start_date": "2026-11-25T00:30:00Z", "status": "unplayed"}]
+    client.get_fixtures = picky
+    logs = []
+    from paper.capture import list_fixtures
+    assert [f["id"] for f in list_fixtures(client, DAY, logs.append)] == ["A"]
+    assert calls == ["unplayed", None] and any("rejected" in l for l in logs)
