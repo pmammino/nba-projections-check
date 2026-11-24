@@ -154,3 +154,29 @@ def test_zero_inflation_is_used_only_when_a_plain_nb_cannot_reproduce_the_quarti
     # a symmetric, ordinary case needs no inflation: P(0) is just the NB's own
     plain, _, e2 = dist.fit_count(20.0, 15, 25)
     assert e2 < 0.002 and plain[0] < 1e-3
+
+
+# ---- a truncated feed must fail loudly -------------------------------------------------------------------
+def test_a_truncated_preseason_sheet_is_refused(monkeypatch):
+    """Live: the sheet came back with 7 players, all A-names, and the pipeline carried on with them."""
+    from paper import sources
+    monkeypatch.setattr(sources, "MIN_ROWS", 250)
+    rows = [{"newsid": 100 + i, "firstname": "A", "lastname": f"Aa{i}", "team": "SAC", "position": "F", "games": 70,
+             "minutes": 25, "fga": 8, "fgm": 4, "pt3a": 1, "pt3m": 0.3, "fta": 2, "ftm": 1.5, "oreb": 1, "dreb": 3,
+             "ast": 1, "stl": 1, "blk": 0.5, "tov": 1, "pf": 2} for i in range(7)]
+    with pytest.raises(ValueError, match=r"only 7 players.*truncated or needs subscriber access"):
+        sources.parse_preseason(rows)
+
+
+def test_check_coverage_names_the_thin_teams():
+    s = {i: {"name": f"p{i}", "team": "WAS"} for i in range(3)} | {100 + i: {"name": f"q{i}", "team": "BOS"} for i in range(12)}
+    problems = feeds.check_coverage(s, {"WAS", "BOS", "DEN"})
+    assert len(problems) == 2 and any("only 3 players for WAS" in p for p in problems) and any("only 0 players for DEN" in p for p in problems)
+    assert feeds.check_coverage(s, {"BOS"}) == []
+
+
+def test_a_cookie_is_sent_only_when_configured(monkeypatch):
+    monkeypatch.delenv("ROTOWIRE_COOKIE", raising=False)
+    assert "Cookie" not in feeds.request_headers()
+    monkeypatch.setenv("ROTOWIRE_COOKIE", "session=abc")
+    assert feeds.request_headers()["Cookie"] == "session=abc"

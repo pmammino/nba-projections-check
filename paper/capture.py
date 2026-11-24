@@ -176,6 +176,9 @@ def capture(root, client, date, slot, fixture_ids, stats=None, books=None, overr
     if price_model in ("feeds", "both"):
         snap = feeds.fetch_snapshot(session)
         teams = {canon(r.get(k)) for r in rows for k in ("home", "away")} - {""}
+        problems = feeds.check_coverage(snap, teams)
+        if problems:      # nothing is written: a half-empty board is worse than a missing one
+            raise RuntimeError("; ".join(problems))
         feeds.save_merged(root, date, slot, snap, teams)
         known = {p["player_id"]: p for p in (load_slate_players(root, date) or [])}
         known.update({p["player_id"]: p for p in feeds.players_of(snap)})
