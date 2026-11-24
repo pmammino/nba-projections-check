@@ -37,6 +37,11 @@ once, at capture, to map an Optic id to our RotoWire player_id (inputs/optic_ids
 Manual commands, for debugging: `discover`, `check-feeds`, `check-results --date D`, `backfill-logs
 --through D`, `slate`, `capture`, `grade`, `replay`, `report --preset ...`.
 
+## Dashboard
+`web/` is a Next.js app (deploy on Vercel with Root Directory `web`; see `web/README.md`) that reads the
+`site/` JSON the Action writes to `paper-data`: persona results, the filtered paper-trading view and
+feed calibration.
+
 ## What is durable and what is derived
 `boards/` (raw quotes) and `sims/` (the draws the day was priced from) are the
 record: never regenerate them, because a later model state would break
