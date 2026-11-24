@@ -1,0 +1,55 @@
+:root {
+  --bg: #ffffff; --panel: #f6f7f9; --border: #e3e6ea; --text: #14171a; --muted: #5d6671;
+  --accent: #1f6feb; --pos: #1a7f37; --neg: #cf222e; --warn: #9a6700;
+  --c1: #1f6feb; --c2: #d4571d; --c3: #2a9d8f; --c4: #8957e5; --c5: #c2410c; --c6: #0f766e; --c7: #b8860b;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1116; --panel: #161b22; --border: #2a313a; --text: #e6e9ee; --muted: #9aa4b1;
+    --accent: #58a6ff; --pos: #3fb950; --neg: #f85149; --warn: #d29922;
+    --c1: #58a6ff; --c2: #f0883e; --c3: #56d4c4; --c4: #bc8cff; --c5: #ff7b72; --c6: #7ee787; --c7: #e3b341;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); }
+body { font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+a { color: var(--accent); text-decoration: none; }
+main { max-width: 1180px; margin: 0 auto; padding: 20px 16px 64px; }
+h1 { font-size: 24px; margin: 4px 0 2px; }
+h2 { font-size: 17px; margin: 28px 0 10px; }
+p.sub, .muted { color: var(--muted); }
+p.sub { margin: 0 0 16px; }
+nav { border-bottom: 1px solid var(--border); background: var(--panel); }
+nav .in { max-width: 1180px; margin: 0 auto; padding: 0 16px; display: flex; gap: 4px; align-items: center; overflow-x: auto; }
+nav .brand { font-weight: 700; padding: 12px 12px 12px 0; white-space: nowrap; }
+nav a { padding: 12px 12px; color: var(--muted); white-space: nowrap; border-bottom: 2px solid transparent; }
+nav a.on { color: var(--text); border-bottom-color: var(--accent); }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+.card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+.card .k { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+.card .v { font-size: 24px; font-weight: 650; margin-top: 2px; }
+.card .n { color: var(--muted); font-size: 13px; }
+.tablewrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { padding: 7px 10px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--border); }
+th:first-child, td:first-child { text-align: left; }
+th { background: var(--panel); font-weight: 600; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .03em; position: sticky; top: 0; }
+tr:last-child td { border-bottom: 0; }
+td.l, th.l { text-align: left; }
+.pos { color: var(--pos); } .neg { color: var(--neg); } .warn { color: var(--warn); }
+.pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; border: 1px solid var(--border); }
+.pill.positive { color: var(--pos); border-color: var(--pos); } .pill.negative { color: var(--neg); border-color: var(--neg); }
+.controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px 14px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); }
+label.chk { flex-direction: row; align-items: center; gap: 6px; font-size: 14px; color: var(--text); grid-column: span 2; }
+input[type=number], select { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font: inherit; }
+button { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 12px; font: inherit; cursor: pointer; }
+button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+.presets { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 12px; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chips button { padding: 3px 10px; font-size: 13px; }
+.note { background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--warn); border-radius: 6px; padding: 10px 12px; margin: 12px 0; font-size: 14px; }
+.chart { height: 300px; margin-top: 8px; }
+.empty { padding: 40px 16px; text-align: center; color: var(--muted); border: 1px dashed var(--border); border-radius: 8px; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; }
+@media (max-width: 600px) { h1 { font-size: 20px; } .card .v { font-size: 20px; } }

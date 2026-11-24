@@ -165,6 +165,12 @@ def cmd_replay(a):
           "has enough bets to say whether the simulator is real -- read its verdict, not theirs.")
 
 
+def cmd_export(a):
+    from .export import export_site
+    out = export_site(a.root)
+    print(f"wrote {out}/summary.json and pool.json")
+
+
 def cmd_report(a):
     from .paper_filter import bets_to_resolve, preset_filters
     from .replay import filter_report
@@ -209,6 +215,7 @@ def main(argv=None):
     r = sub.add_parser("replay"); r.set_defaults(fn=cmd_replay)
     r.add_argument("--basis", default="proj", choices=["proj", "pool", "sharp"])
     r.add_argument("--dry-run", action="store_true")
+    ex = sub.add_parser("export"); ex.set_defaults(fn=cmd_export)
     rp = sub.add_parser("report"); rp.set_defaults(fn=cmd_report)
     rp.add_argument("--preset", default="realistic")
     a = p.parse_args(argv)

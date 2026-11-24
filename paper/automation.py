@@ -306,4 +306,5 @@ def auto(root, client, now=None, overrides=None, log=print, n_sims=2000, session
                             + (f", {len(s['unmatched'])} players unmatched" if s["unmatched"] else ""))
     step("grade", lambda: grade_pending(root, client, log))
     step("report", lambda: write_report(root))
+    step("export site data", lambda: __import__("paper.export", fromlist=["export_site"]).export_site(root))
     return errors
