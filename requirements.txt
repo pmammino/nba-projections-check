@@ -1,0 +1,7 @@
+numpy
+pandas
+scipy
+requests
+nba_api
+pyarrow
+pytest

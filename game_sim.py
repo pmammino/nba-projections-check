@@ -239,6 +239,13 @@ def simulate_games(proj: pd.DataFrame, n_sims: int = 4000, seed: int = 0,
 
     players = _quantiles(proj, sim, gid, team)
     teams = _team_quantiles(proj, sim, gid, team, scoring)
+    if return_draws == "all":
+        # Every simulated stat, not just fantasy points: dict stat ->
+        # (n_sims, n_players) float64, column order matching
+        # `players["player_id"]`. The paper-trading package prices prop lines
+        # straight off these draws (see paper/pricing.py), which is what lets
+        # combo markets such as PRA come out coherent.
+        return players, teams, sim
     if return_draws:
         # sim["fp"] is (n_sims, n_players); transpose to (n_players, n_sims)
         # to match the raw-draw convention a lineup-scoring consumer expects.
