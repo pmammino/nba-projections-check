@@ -60,11 +60,14 @@ def fixtures_in_window(client, date, status, log=None):
 
     The slate day is [date 10:00Z, date+1 10:00Z) so that US evening tips (which cross UTC
     midnight) belong to the right day. The window and the status are enforced HERE, on whatever
-    the API returns, because live runs showed the API does not do what its parameters suggest:
-    a time-of-day range returned last night's finished games, and status=unplayed returned nothing.
+    the API returns, because live runs showed it does not do what its parameters suggest: a
+    time-of-day range returned last night's finished games, and status=unplayed WITH a date range
+    returned nothing (without dates it returns the whole upcoming schedule).
 
     So several routes are tried in turn, and the first that yields a usable fixture wins:
-      upcoming  /fixtures?status=unplayed, then /fixtures/active, then /fixtures unfiltered
+      upcoming  /fixtures?status=unplayed with NO dates (the form that works live, stopping once past
+                the window), then the same with a date range, then /fixtures/active, then /fixtures
+                unfiltered
       completed /fixtures?status=completed, then /fixtures unfiltered
     Every attempt is logged with what it returned (count, statuses, start-date range), so a day with
     no fixtures says whether the games are missing or the query is wrong."""
@@ -72,13 +75,18 @@ def fixtures_in_window(client, date, status, log=None):
     hi = lo + timedelta(days=1)
     d0, d2 = date, (lo + timedelta(days=2)).strftime("%Y-%m-%d")
     want = UPCOMING if status == "unplayed" else FINISHED
-    routes = ([("fixtures", "unplayed"), ("active", None), ("fixtures", None), ("active-any-date", None)]
+    routes = ([("upcoming", "unplayed"), ("fixtures", "unplayed"), ("active", None), ("fixtures", None),
+               ("active-any-date", None)]
               if status == "unplayed" else [("fixtures", status), ("fixtures", None)])
     note = log or (lambda *_: None)
     out = []
     for kind, st in routes:
         try:
-            if kind in ("active", "active-any-date"):
+            if kind == "upcoming":
+                if not hasattr(client, "get_upcoming_fixtures"):
+                    continue
+                raw = client.get_upcoming_fixtures(until=hi)
+            elif kind in ("active", "active-any-date"):
                 if not hasattr(client, "get_active_fixtures"):
                     continue
                 # active-any-date is a PROBE: every upcoming/live NBA fixture, whatever its date, so the
@@ -102,6 +110,8 @@ def fixtures_in_window(client, date, status, log=None):
                 why = "outside the slate window"
             elif status == "unplayed" and f.get("is_live"):
                 why = "live"
+            elif status == "unplayed" and f.get("has_odds") is False:
+                why = "no odds posted yet"
             elif state not in want:
                 why = f"status={f.get('status')}"
             if why:

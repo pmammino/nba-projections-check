@@ -495,3 +495,67 @@ def test_unchanged_outputs_are_not_rewritten(tmp_path):
     export.export_site(tmp_path)
     after = {p: p.read_bytes() for p in before}
     assert before == after                                                  # byte-identical: no commit on the data branch
+
+
+# ---- the live /fixtures?status=unplayed response (trimmed from the real payload) ----------------------
+def real_fx(fid, start, home, away, has_odds=True):
+    return {"id": fid, "start_date": start, "status": "unplayed", "is_live": False, "has_odds": has_odds,
+            "home_competitors": [{"abbreviation": home}], "away_competitors": [{"abbreviation": away}]}
+
+
+LIVE_PAGE_1 = [real_fx("20261125398B391D", "2026-11-25T00:00:00Z", "ORL", "DET"),
+               real_fx("20261125EF3D60A2", "2026-11-25T01:00:00Z", "WAS", "BOS"),
+               real_fx("202611257A3D5A9D", "2026-11-25T03:00:00Z", "DEN", "DAL"),
+               real_fx("202611255BC9A1BC", "2026-11-25T22:00:00Z", "PHI", "MIA"),     # tomorrow's slate (after 10:00Z)
+               real_fx("2026112637F9D8D2", "2026-11-26T00:00:00Z", "CHA", "CHI")]
+LIVE_PAGE_2 = [real_fx("20261128889FADF6", "2026-11-28T23:00:00Z", "CHA", "BKN"),
+               real_fx("20261212C78603E8", "2026-12-12T22:00:00Z", "MEM", "MIL", has_odds=False)]
+
+
+def test_upcoming_is_asked_for_the_way_the_optic_docs_do_with_no_dates_and_stops_early():
+    from test_pipeline import FakeResp, FakeSession
+    from paper import optic
+    from datetime import datetime, timezone
+    pages = [FakeResp(200, {"data": LIVE_PAGE_1, "has_more": True, "page": 1}),
+             FakeResp(200, {"data": LIVE_PAGE_2, "has_more": True, "page": 2})]
+    s = FakeSession(pages)
+    c = optic.OpticOddsClient(api_key="k", session=s, rate=(1000, 1), logger=lambda *_: None)
+    got = c.get_upcoming_fixtures(until=datetime(2026, 11, 25, 10, 0, tzinfo=timezone.utc))
+    assert len(got) == 5 and len(s.calls) == 1                       # page 1 already reaches past the window: no page 2
+    url = s.calls[0][0]
+    assert "status=unplayed" in url and "sport=basketball" in url and "league=nba" in url
+    assert "start_date" not in url and "end_date" not in url          # the date params are what broke it
+
+
+def test_tonights_slate_comes_out_of_the_live_response(tmp_path):
+    pre = preseason()
+    client = FakeOptic(pre, {"final": False})
+    calls = []
+    client.get_upcoming_fixtures = lambda until: calls.append("upcoming") or LIVE_PAGE_1 + LIVE_PAGE_2
+    client.get_fixtures = lambda **k: calls.append("dated") or []
+    logs = []
+    from paper.capture import list_fixtures
+    got = list_fixtures(client, DAY, logs.append)
+    assert [f["id"] for f in got] == ["20261125398B391D", "20261125EF3D60A2", "202611257A3D5A9D"]
+    assert calls == ["upcoming"]                                       # the first route worked: nothing else asked
+    assert "dropped" in "\n".join(logs) and "outside the slate window" in "\n".join(logs)
+
+
+def test_a_game_with_no_odds_posted_yet_is_not_captured(tmp_path):
+    pre = preseason()
+    client = FakeOptic(pre, {"final": False})
+    client.get_upcoming_fixtures = lambda until: [real_fx("A", "2026-11-25T00:00:00Z", "ORL", "DET", has_odds=False),
+                                                  real_fx("B", "2026-11-25T01:00:00Z", "WAS", "BOS")]
+    logs = []
+    from paper.capture import list_fixtures
+    assert [f["id"] for f in list_fixtures(client, DAY, logs.append)] == ["B"]
+    assert "no odds posted yet" in "\n".join(logs)
+
+
+def test_if_upcoming_has_nothing_the_dated_routes_still_run(tmp_path):
+    pre = preseason()
+    client = FakeOptic(pre, {"final": False})
+    client.get_upcoming_fixtures = lambda until: []
+    from paper.capture import list_fixtures
+    got = list_fixtures(client, DAY)                                   # FakeOptic.get_fixtures still serves its game
+    assert got and got[0]["id"] == FX

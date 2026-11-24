@@ -122,12 +122,16 @@ class OpticOddsClient:
     def _backoff(attempt):
         return 1.0 * 2 ** attempt * (0.5 + random.random() * 0.5)
 
-    def get_all(self, endpoint, params=None, max_pages=50):
+    def get_all(self, endpoint, params=None, max_pages=50, stop_when=None):
+        """Every page of a list endpoint. `stop_when(batch)` ends paging early (e.g. a list sorted by
+        start date once it has gone past the window we care about)."""
         rows = []
         for page in range(1, max_pages + 1):
             payload = self.get(endpoint, {**(params or {}), "page": page})
             batch = unwrap(payload)
             rows.extend(batch)
+            if stop_when and stop_when(batch):
+                return rows
             if isinstance(payload, dict) and isinstance(payload.get("has_more"), bool):
                 if not payload["has_more"]:
                     return rows
@@ -155,6 +159,15 @@ class OpticOddsClient:
         return self.get_all("/fixtures", {"sport": sport, "league": league,
                                           "start_date": start_date, "end_date": end_date,
                                           "status": status})
+
+    def get_upcoming_fixtures(self, until, sport="basketball", league="nba"):
+        """Unplayed fixtures, exactly as the Optic docs' example asks for them: sport, league and
+        status ONLY. Passing start_date/end_date alongside status=unplayed returned nothing on a
+        live run, while this returns the whole upcoming schedule (soonest first). Paging stops once a
+        page reaches `until`, so a normal call is one or two requests, not the whole season."""
+        until_s = until.strftime("%Y-%m-%dT%H:%M:%SZ")
+        return self.get_all("/fixtures", {"sport": sport, "league": league, "status": "unplayed"},
+                            stop_when=lambda batch: any(str(f.get("start_date", "")) >= until_s for f in batch))
 
     def get_active_fixtures(self, start_date=None, end_date=None, sport="basketball", league="nba"):
         """/fixtures/active: upcoming and live fixtures. The natural endpoint for "what can I bet
