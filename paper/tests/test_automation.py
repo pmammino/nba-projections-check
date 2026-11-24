@@ -348,3 +348,20 @@ def test_sim_mode_still_works_for_combos_and_comparison(tmp_path):
                   price_model="sim")
     assert errs == [] and store.load_sim(tmp_path, DAY)[1] is not None
     assert (tmp_path / "inputs" / "preseason.csv").exists() and store.load_candidates(tmp_path, DAY)
+
+
+def test_an_empty_or_filtered_slate_explains_itself(tmp_path):
+    pre = preseason()
+    client = FakeOptic(pre, {"final": False})
+    client.get_fixtures = lambda **k: [{"id": "A", "start_date": "2026-11-25T00:30:00Z", "status": "postponed"},
+                                       {"id": "B", "start_date": "garbage", "status": "unplayed"},
+                                       {"id": "C", "start_date": "2026-11-25T00:30:00Z", "status": "unplayed", "is_live": True}]
+    logs = []
+    A.auto(tmp_path, client, now=at(18, 45), log=logs.append, session=FakeSession(pre))
+    text = "\n".join(logs)
+    assert "API returned 3, 0 usable" in text and "status=postponed" in text and "unparseable" in text and "live" in text
+    assert "due: nothing" in text
+    client.get_fixtures = lambda **k: []
+    logs.clear()
+    A.auto(tmp_path, client, now=at(18, 45), log=logs.append, session=FakeSession(pre))
+    assert "API returned 0, 0 usable" in "\n".join(logs)

@@ -34,20 +34,32 @@ def slate_window(date: str):
     return d0.strftime("%Y-%m-%dT%H:%M:%SZ"), (d0 + timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def list_fixtures(client, date):
-    """Unplayed fixtures for a slate date: [{id, start (datetime UTC)}]."""
+def list_fixtures(client, date, log=None):
+    """Unplayed fixtures for a slate date: [{id, start (datetime UTC)}]. When `log` is given,
+    says how many the API returned and why any were dropped, so an empty slate explains itself
+    (no games that day vs a status/date field that did not parse)."""
     start, end = slate_window(date)
-    out = []
-    for f in client.get_fixtures(start_date=start, end_date=end):
-        if not f.get("id") or f.get("is_live"):
-            continue
-        if str(f.get("status", "")).lower() not in ("unplayed", "scheduled", ""):
-            continue
+    raw = client.get_fixtures(start_date=start, end_date=end)
+    out, dropped = [], {}
+    for f in raw:
+        why = None
         ts = str(f.get("start_date", "")).replace("Z", "+00:00")
-        try:
-            out.append({"id": f["id"], "start": datetime.fromisoformat(ts).astimezone(timezone.utc)})
-        except ValueError:
-            continue
+        if not f.get("id"):
+            why = "no id"
+        elif f.get("is_live"):
+            why = "live"
+        elif str(f.get("status", "")).lower() not in ("unplayed", "scheduled", ""):
+            why = f"status={f.get('status')}"
+        else:
+            try:
+                out.append({"id": f["id"], "start": datetime.fromisoformat(ts).astimezone(timezone.utc)})
+            except ValueError:
+                why = f"unparseable start_date={f.get('start_date')!r}"
+        if why:
+            dropped[why] = dropped.get(why, 0) + 1
+    if log:
+        log(f"  fixtures {start} .. {end}: API returned {len(raw)}, {len(out)} usable"
+            + (f"; dropped {dropped}" if dropped else ""))
     return sorted(out, key=lambda x: x["start"])
 
 

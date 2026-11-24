@@ -278,9 +278,11 @@ def auto(root, client, now=None, overrides=None, log=print, n_sims=2000, session
     from .markets import COMBO_STATS, DEFAULT_STATS
     stats = DEFAULT_STATS + COMBO_STATS if price_model in ("both", "sim") else DEFAULT_STATS
     log(f"auto @ {now:%Y-%m-%d %H:%MZ}  slate {date}")
-    fixtures = step("list fixtures", lambda: cap.list_fixtures(client, date)) or []
+    fixtures = step("list fixtures", lambda: cap.list_fixtures(client, date, log)) or []
     captured = captured_fixtures(root, date)
     due, missed = plan_captures(now, fixtures, captured)
+    log(f"  due: " + (", ".join(f"{k} x{len(v)}" for k, v in due.items() if v) or "nothing")
+        + (f" (already captured: {', '.join(f'{k} x{len(v)}' for k, v in captured.items())})" if captured else ""))
     for slot, fid in missed:
         log(f"  missed {slot} window for fixture {fid}; skipped (never backfilled with a later price)")
     if any(due.values()):
