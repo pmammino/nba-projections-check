@@ -144,3 +144,13 @@ def test_real_floor_row_confirms_the_direction_convention():
     # and the fits are consistent with the published quartiles
     b = feeds.FeedBook({5428: s})
     assert all(b.fit(5428, st)[2] < 0.01 for st in ("pts", "reb", "ast", "tov", "threes"))
+
+
+def test_zero_inflation_is_used_only_when_a_plain_nb_cannot_reproduce_the_quartiles():
+    # Aldama's real row: mean 4.63 points, quartiles 0 and 8 => a big mass at zero.
+    pmf, k, err = dist.fit_count(4.62523, 0, 8)
+    assert err < 1e-9 and pmf[0] >= 0.25 and np.cumsum(pmf)[7] < 0.75 + 1e-9 <= np.cumsum(pmf)[8] + 1e-9 + 0.75
+    assert (pmf * np.arange(len(pmf))).sum() == pytest.approx(4.62523, rel=0.01)       # the mean survives
+    # a symmetric, ordinary case needs no inflation: P(0) is just the NB's own
+    plain, _, e2 = dist.fit_count(20.0, 15, 25)
+    assert e2 < 0.002 and plain[0] < 1e-3

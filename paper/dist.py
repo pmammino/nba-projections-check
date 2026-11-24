@@ -8,9 +8,16 @@ given mean; its dispersion is the one value of k whose quartiles reproduce the
 published floor and ceiling. Many k can reproduce a pair of integers, so the middle
 of the consistent range (in log k) is taken rather than an arbitrary edge of it.
 
-A dispersion that cannot reproduce the quartiles at all (e.g. a floor above what any
-NB with that mean allows) falls back to the closest k and is reported by `fit_error`,
-so a feed that is inconsistent with itself is visible, not silently priced.
+ZERO INFLATION. A bench player is often either a non-factor (0 points) or a real
+contributor, so "mean 4.6, 25th percentile 0, 75th percentile 8" (Aldama's real feed row)
+is a distribution with a big mass at zero that no plain NB can produce: the fit misses
+the quartiles by ~4 points of cdf. A zero-inflation term pi is therefore tried too, but
+ONLY as far as it is needed: the smallest pi that reproduces the quartiles is used, and pi=0
+whenever a plain NB already does. The mean is preserved either way.
+
+A pair that no (k, pi) can reproduce falls back to the closest fit and is reported through
+the returned error, so a feed that is inconsistent with itself is visible, not silently
+priced.
 
 Yes/no markets (double/triple double) are a Bernoulli with the published probability.
 """
@@ -67,26 +74,46 @@ def _nb_matrix(mean: float, ks: np.ndarray, n: int) -> np.ndarray:
     return P / P.sum(axis=1, keepdims=True)
 
 
+PI_GRID = (0.0, 0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 0.6)
+_FIT_CACHE: dict = {}
+
+
 def fit_count(mean: float, lo: float, hi: float):
-    """-> (pmf, k, error). `lo`/`hi` are the published 25th/75th percentiles."""
+    """-> (pmf, k, error). `lo`/`hi` are the published 25th/75th percentiles. Cached on
+    the (rounded) inputs: a slate repeats the same fits at every capture."""
+    key = (round(float(mean), 6), float(lo), float(hi))
+    if key not in _FIT_CACHE:
+        _FIT_CACHE[key] = _fit_count(*key)
+    return _FIT_CACHE[key]
+
+
+def _fit_count(mean: float, lo: float, hi: float):
     mean = max(float(mean), 0.0)
     n = _support(mean, hi)
     if mean <= 1e-12:
         out = np.zeros(n + 1)
         out[0] = 1.0
         return out, float("inf"), 0.0
-    P = _nb_matrix(mean, K_GRID, n)
-    C = np.cumsum(P, axis=1)
-    loss = np.zeros(len(K_GRID))
-    for target, q in ((0.25, lo), (0.75, hi)):
-        q = int(round(q))
-        q = min(q, n)
-        below = C[:, q - 1] if q >= 1 else np.zeros(len(K_GRID))
-        loss += np.maximum(0.0, below - target) + np.maximum(0.0, target - C[:, q])
-    best = loss.min()
-    ok = np.where(loss <= best + 1e-9)[0]
-    i = ok[len(ok) // 2]                      # the middle of the consistent range
-    return P[i], float(K_GRID[i]), float(best)
+    best = None
+    for pi in PI_GRID:
+        # NB with mean m/(1-pi), then a point mass pi added at zero: overall mean stays m.
+        P = _nb_matrix(mean / (1 - pi), K_GRID, n)
+        P = (1 - pi) * P
+        P[:, 0] += pi
+        C = np.cumsum(P, axis=1)
+        loss = np.zeros(len(K_GRID))
+        for target, q in ((0.25, lo), (0.75, hi)):
+            q = min(int(round(q)), n)
+            below = C[:, q - 1] if q >= 1 else np.zeros(len(K_GRID))
+            loss += np.maximum(0.0, below - target) + np.maximum(0.0, target - C[:, q])
+        m = loss.min()
+        if best is None or m < best[0] - 1e-9:      # strictly better only: the smallest pi that works wins
+            ok = np.where(loss <= m + 1e-9)[0]
+            i = ok[len(ok) // 2]                    # the middle of the consistent range
+            best = (m, P[i], float(K_GRID[i]))
+        if best[0] <= 1e-9:
+            break
+    return best[1], best[2], float(best[0])
 
 
 def quantile_draws(pmf: np.ndarray, n: int = N_DRAWS) -> np.ndarray:
