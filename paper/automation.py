@@ -217,11 +217,14 @@ def grade_date(root, date, client, log=print):
             log(f"  grade {date}: {t['away']}@{t['home']} box disagrees with Optic's grading "
                 f"({'; '.join(g['errors'][:3])}); will retry")
             return False
-        bad = R.verify_box(g["rows"], t)
+        bad, notes = R.verify_box_detail(g["rows"], t)
         if bad:
             log(f"  grade {date}: {t['away']}@{t['home']} box does not reconcile with team totals "
                 f"({'; '.join(bad[:3])}); will retry")
             return False
+        if notes:
+            log(f"  grade {date}: {t['away']}@{t['home']} small team-line differences, within tolerance "
+                f"({'; '.join(notes[:3])})")
         rows += g["rows"]
     players = cap.load_slate_players(root, date) or []
     idmap_path = inputs_dir(root) / "optic_ids.csv"
@@ -361,3 +364,37 @@ def auto(root, client, now=None, overrides=None, log=print, n_sims=2000, session
     step("report", lambda: write_report(root))
     step("export site data", lambda: __import__("paper.export", fromlist=["export_site"]).export_site(root))
     return errors
+
+
+def run_loop(root, client, minutes, every, publish_fn=None, sleep=time.sleep, clock=None, log=print,
+             auto_fn=None, **auto_kw):
+    """Run `auto` repeatedly for `minutes`, once per `every` minutes, publishing after each pass.
+
+    GitHub's cron is best-effort: a `*/15` schedule fired twice in 17 hours, which cannot serve per-game
+    windows (pregame about 2h before tip, closing in the last 25 minutes). So one workflow run now stays alive
+    for hours and keeps its own clock; the workflow starts its successor when it finishes.
+
+    A pass that raises does not end the loop: the next pass tries again (every step inside `auto` is already
+    isolated, this covers anything outside them). Returns (passes, errors_of_the_last_pass)."""
+    auto_fn = auto_fn or auto
+    clock = clock or (lambda: datetime.now(timezone.utc))
+    end = clock() + timedelta(minutes=minutes)
+    passes, errors = 0, []
+    while True:
+        started = clock()
+        try:
+            errors = auto_fn(root, client, now=started, log=log, **auto_kw) or []
+        except Exception as err:               # noqa: BLE001
+            errors = [f"pass failed: {err}"]
+            log(f"  !! pass failed: {err}")
+        if publish_fn:
+            try:
+                publish_fn()
+            except Exception as err:           # noqa: BLE001
+                errors.append(f"publish: {err}")
+                log(f"  !! publish failed: {err}")
+        passes += 1
+        wait = (started + timedelta(minutes=every) - clock()).total_seconds()
+        if clock() + timedelta(seconds=max(wait, 1)) >= end:
+            return passes, errors
+        sleep(max(wait, 1))

@@ -1,43 +1,46 @@
 name: NBA paper trading
 
-# One job does everything: `python -m paper.cli auto` decides from the clock and the
-# fixtures' tip times whether a slate must be built, a morning / pregame / closing
-# capture is due, or yesterday's games can be graded, then rebuilds the ledgers and
-# report.md. It runs every 15 minutes; most runs find nothing due and exit in seconds.
+# ONE run stays alive for ~5.5 hours and keeps its own clock: `python -m paper.cli loop` runs a pass every
+# 5 minutes (build the slate, capture whatever is due, grade finished days, rebuild ledgers/report/site data)
+# and PUBLISHES after each pass, so the dashboard updates as it goes. When the run ends it starts its own
+# successor (workflow_dispatch from GITHUB_TOKEN is one of the two events GitHub lets a workflow trigger).
 #
-# Needs two repo secrets (Settings > Secrets and variables > Actions > REPOSITORY secrets):
+# Why not a plain cron? GitHub's `schedule` is best-effort: a `*/15` schedule fired TWICE in 17 hours here, and
+# the per-game windows (pregame about 2h before tip, closing in the last 25 minutes) need minutes, not hours.
+# The cron below is only a safety net that restarts the chain if it ever breaks.
+#
+# Needs two REPOSITORY secrets (Settings > Secrets and variables > Actions):
 #   OPTICODDS_API_KEY  the odds and results feed
 #   ROTOWIRE_COOKIE    a logged-in rotowire.com session's Cookie header (the full projection tables)
 #
-# Data lives on its own branch, `paper-data`, so the code branch stays free of
-# thousands of data commits. The first run creates the branch.
-#
-# NOTE: GitHub only runs `schedule` triggers from the DEFAULT branch, so this file
-# must be merged there. `workflow_dispatch` works from any branch for a manual test.
+# Data lives on its own branch, `paper-data`; the first run creates it. GitHub only runs `schedule` from the
+# DEFAULT branch, so this file must be merged there.
 
 on:
   schedule:
-    # 15:00-10:00 UTC covers US NBA tips (slates run 10:00Z to 10:00Z) plus a grading
-    # sweep in the morning. Scheduled runs can be delayed by several minutes under load;
-    # the per-fixture windows in automation.py tolerate that and report anything missed.
-    - cron: "*/15 0-6,15-23 * * *"
+    - cron: "7 */2 * * *"
   workflow_dispatch:
     inputs:
       now:
-        description: "Override the clock (ISO UTC, e.g. 2026-11-24T22:30:00Z). Blank = real time."
+        description: "Run ONE pass with the clock overridden (ISO UTC, e.g. 2026-11-24T22:30:00Z). Blank = the loop."
         required: false
+      minutes:
+        description: "How long the loop stays alive, polling every 5 minutes (default 330; under 5 = one pass)"
+        required: false
+        default: "330"
 
 permissions:
   contents: write
+  actions: write            # to start the next run
 
 concurrency:
-  group: paper-trading          # never two runs at once: they would race on the data branch
+  group: paper-trading      # one at a time: two would race on the data branch
   cancel-in-progress: false
 
 jobs:
   auto:
     runs-on: ubuntu-latest
-    timeout-minutes: 40         # the first run backfills the season's box scores
+    timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4
 
@@ -60,21 +63,25 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      - name: Run
+      - name: Run (loops, publishing after every pass)
+        id: run
         env:
           OPTICODDS_API_KEY: ${{ secrets.OPTICODDS_API_KEY }}
           # RotoWire returns only a small preview to an anonymous request; the full tables need a logged-in
-          # session cookie (see paper/README.md). When it is missing or expired the capture stops with a
-          # message saying so, rather than pricing a handful of players.
+          # session cookie (see paper/README.md). When it is missing or expired the capture stops with a message
+          # saying so, rather than pricing a handful of players.
           ROTOWIRE_COOKIE: ${{ secrets.ROTOWIRE_COOKIE }}
+          NOW: ${{ github.event.inputs.now }}
+          MINUTES: ${{ github.event.inputs.minutes || '330' }}
         run: |
-          if [ -n "${{ github.event.inputs.now }}" ]; then
-            python -m paper.cli auto --now "${{ github.event.inputs.now }}"
+          echo "started=$(date +%s)" >> "$GITHUB_OUTPUT"
+          if [ -n "$NOW" ]; then
+            python -m paper.cli auto --now "$NOW"
           else
-            python -m paper.cli auto
+            python -m paper.cli loop --minutes "$MINUTES" --every 5 --publish
           fi
 
-      - name: Publish data
+      - name: Publish anything left over
         if: always()
         run: |
           cd data/paper
@@ -84,4 +91,19 @@ jobs:
           if ! git diff --cached --quiet; then
             git commit -m "paper data $(date -u +%Y-%m-%dT%H:%MZ)"
             git push origin paper-data
+          fi
+
+      - name: Start the next run
+        # Only after a run that actually ran for a while: a run that fails in seconds must not respawn itself
+        # in a tight loop (the cron restarts the chain instead).
+        if: always() && github.event.inputs.now == ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STARTED: ${{ steps.run.outputs.started }}
+        run: |
+          ELAPSED=$(( $(date +%s) - ${STARTED:-$(date +%s)} ))
+          if [ "$ELAPSED" -ge 1800 ]; then
+            gh workflow run paper-trading.yml --ref "${{ github.event.repository.default_branch }}"
+          else
+            echo "this run lasted only ${ELAPSED}s, so it is not starting a successor"
           fi

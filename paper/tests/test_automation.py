@@ -191,8 +191,16 @@ class FakeOptic:
                 steals=1, blocks=0, turnovers=2, fouls=2)))
         return out
 
+    def _secs(self):
+        """Seconds per player so each team's minutes add to 240."""
+        n = {}
+        for _, tid, _ in self._box():
+            n[tid] = n.get(tid, 0) + 1
+        return {tid: 14400 // c for tid, c in n.items()}
+
     def _rows(self):
-        return [box_player(hexid(n), n, tid, 1800, **s) for n, tid, s in self._box()]
+        secs = self._secs()
+        return [box_player(hexid(n), n, tid, secs[tid], **s) for n, tid, s in self._box()]
 
     def get_fixture_results(self, fixture_ids):
         from paper import results as R
@@ -222,10 +230,7 @@ class FakeOptic:
                 "away_competitors": [{"id": "AWAY", "name": "New York Knicks", "abbreviation": "NY"}]}
 
     def get_player_results(self, fixture_ids):
-        rows = []
-        for n, tid, s in self._box():
-            rows.append(box_player(hexid(n), n, tid, 1800, **s))
-        return [{"fixture": self._res_fixture(), "results": rows}]
+        return [{"fixture": self._res_fixture(), "results": self._rows()}]
 
 
 def test_a_full_slate_day_runs_itself(tmp_path):
@@ -635,3 +640,62 @@ def test_a_thin_stored_simulation_is_rebuilt(tmp_path, monkeypatch):
     assert ok and any("rebuilding" in l for l in logs)
     ids, sim = store.load_sim(tmp_path, DAY)
     assert len(ids) >= 8 and sim["pts"].shape[1] == len(ids)
+
+
+# ---- the loop that replaces GitHub's unreliable cron ---------------------------------------------------------
+class Clock:
+    """A fake clock that only moves when the loop sleeps."""
+    def __init__(self):
+        self.t = datetime(2026, 11, 24, 15, 0, tzinfo=UTC)
+    def __call__(self):
+        return self.t
+    def sleep(self, seconds):
+        self.t += timedelta(seconds=seconds)
+
+
+def test_the_loop_runs_a_pass_every_few_minutes_until_the_time_is_up():
+    clk, seen = Clock(), []
+    passes, errs = A.run_loop("root", object(), minutes=30, every=10, sleep=clk.sleep, clock=clk, log=lambda *_: None,
+                              auto_fn=lambda root, client, now, **k: seen.append(now) or [])
+    assert passes == 3 and errs == []
+    assert [t.minute for t in seen] == [0, 10, 20]                       # 15:00, 15:10, 15:20; a 4th would start at the end
+
+
+def test_a_pass_that_raises_does_not_end_the_loop_and_every_pass_publishes():
+    clk, published, logs = Clock(), [], []
+    n = {"i": 0}
+    def flaky(root, client, now, **k):
+        n["i"] += 1
+        if n["i"] == 2:
+            raise RuntimeError("optic hiccup")
+        return []
+    passes, errs = A.run_loop("root", object(), minutes=30, every=10, sleep=clk.sleep, clock=clk, log=logs.append,
+                              auto_fn=flaky, publish_fn=lambda: published.append(1))
+    assert passes == 3 and len(published) == 3                           # the failing pass still published, and the loop went on
+    assert any("optic hiccup" in l for l in logs) and errs == []        # the LAST pass was clean
+
+
+def test_a_slow_pass_does_not_sleep_into_the_next_one_and_errors_are_reported():
+    clk = Clock()
+    def slow(root, client, now, **k):
+        clk.t += timedelta(minutes=12)                                    # a rebuild that takes longer than the interval
+        return ["capture morning: boom"]
+    passes, errs = A.run_loop("root", object(), minutes=40, every=10, sleep=clk.sleep, clock=clk, log=lambda *_: None, auto_fn=slow)
+    assert passes >= 3 and errs == ["capture morning: boom"]
+
+
+def test_publish_commits_only_when_something_changed_and_pushes(tmp_path):
+    import subprocess
+    from paper.publish import publish
+    remote, work = tmp_path / "remote.git", tmp_path / "work"
+    subprocess.run(["git", "init", "-q", "--bare", "-b", "paper-data", str(remote)], check=True)
+    subprocess.run(["git", "init", "-q", "-b", "paper-data", str(work)], check=True)
+    subprocess.run(["git", "-C", str(work), "remote", "add", "origin", str(remote)], check=True)
+    assert publish(work) is False                                          # empty: nothing to commit
+    (work / "report.md").write_text("one")
+    assert publish(work) is True
+    assert publish(work) is False                                          # unchanged: no second commit
+    (work / "report.md").write_text("two")
+    assert publish(work) is True
+    log = subprocess.run(["git", "-C", str(remote), "log", "--oneline", "paper-data"], capture_output=True, text=True).stdout
+    assert len(log.strip().splitlines()) == 2

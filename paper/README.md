@@ -5,9 +5,11 @@ from the NFL dashboard repo (`personas.mjs`, `paper-filter.mjs`, `consensus.mjs`
 `source-weights.mjs`). Standalone: only `slate.py` touches the model modules.
 
 ## Everything runs itself
-`.github/workflows/paper-trading.yml` runs `python -m paper.cli auto` every 15 minutes.
-Needs one repo secret, `OPTICODDS_API_KEY`. Each run decides from the clock and the
-fixtures' tip times what is due:
+`.github/workflows/paper-trading.yml` starts one run that stays alive for ~5.5 hours and runs a
+pass (`python -m paper.cli loop`) every 5 minutes, publishing the data branch after each pass; when it ends it
+starts its own successor. A plain cron is not used for the work because GitHub's `schedule` is best-effort (a
+`*/15` schedule fired twice in 17 hours here); the cron remains only as a safety net that restarts the chain.
+Each pass decides from the clock and the fixtures' tip times what is due:
 
 * **price source** (default, `--price-model both`: singles from the feeds, combos from the simulator; `feeds` = singles only; `sim` = simulator only): RotoWire's daily floor/median/ceiling
   feeds, fetched AT EACH CAPTURE and stored per slot, so a pregame bet is priced off the feed

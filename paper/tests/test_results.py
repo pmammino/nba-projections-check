@@ -91,15 +91,58 @@ def team_results(rows, home="CLE", away="IND"):
              "stats": {"home": [{"period": "all", "stats": h["stats"]}], "away": [{"period": "all", "stats": a["stats"]}]}}]
 
 
+def full_box(extra_secs=0, drop=None, ast_a=3):
+    """Two complete teams: minutes add to 240 (+25 per overtime period) via zero-stat filler players."""
+    def team(tid, prefix, starters):
+        ps = [player(f"{prefix}{i}", f"{prefix}{i}", tid, secs, **st) for i, (secs, st) in enumerate(starters)]
+        used = sum(secs for secs, _ in starters)
+        ps.append(player(f"{prefix}F", f"{prefix}Filler", tid, 14400 + extra_secs - used))
+        return ps
+    cle = team(CLE, "c", [(1800, dict(field_goals_made=5, field_goals_attempted=9, assists=ast_a)),
+                          (1200, dict(field_goals_made=2, field_goals_attempted=4, assists=1))])
+    ind = team(IND, "i", [(1800, dict(field_goals_made=4, field_goals_attempted=8, assists=2))])
+    players = cle + ind
+    if drop:
+        players = [p for p in players if p["player"]["id"] != drop]
+    return players
+
+
 def test_verify_box_passes_when_complete_and_catches_a_missing_player():
-    players = [player("A", "a", CLE, 1800, field_goals_made=5, field_goals_attempted=9, assists=3),
-               player("B", "b", CLE, 1200, field_goals_made=2, field_goals_attempted=4, assists=1),
-               player("C", "c", IND, 1800, field_goals_made=4, field_goals_attempted=8, assists=2)]
-    g = R.parse_player_results(payload(players))[0]
+    g = R.parse_player_results(payload(full_box()))[0]
     t = R.parse_optic_results(team_results(g["rows"]))[0]
     assert R.verify_box(g["rows"], t) == [] and t["completed"]
-    short = [r for r in g["rows"] if r["player_name"] != "b"]
-    assert any("points" in m or "assists" in m for m in R.verify_box(short, t))
+    short = [r for r in g["rows"] if r["player_name"] != "c1"]            # a scorer is missing
+    bad = R.verify_box(short, t)
+    assert any("points" in m for m in bad) and any("minutes" in m for m in bad)
+
+
+def test_one_assist_off_in_the_team_line_is_a_note_not_a_blocker():
+    """Live: BOS@WAS team line said 25 assists, the players add to 24. Exact equality held grading back forever."""
+    g = R.parse_player_results(payload(full_box()))[0]
+    t = R.parse_optic_results(team_results(g["rows"]))[0]
+    t["stats"]["home"]["assists"] += 1                                     # Optic's team line is one higher
+    blockers, notes = R.verify_box_detail(g["rows"], t)
+    assert blockers == [] and len(notes) == 1 and "assists" in notes[0]
+    t["stats"]["home"]["assists"] += 5                                      # a real gap is still a blocker
+    assert any("assists" in m for m in R.verify_box(g["rows"], t))
+
+
+def test_a_missing_zero_point_bench_player_is_caught_by_minutes_not_points():
+    """No counting stat would show a 6-minute scoreless player missing; the minutes total does."""
+    players = full_box()
+    players[-1 - 1] = player("iX", "Bench", IND, 360)                       # swap IND's filler for a short one
+    g = R.parse_player_results(payload([p for p in players if p["player"]["id"] != "iF"]))[0]
+    t = R.parse_optic_results(team_results(g["rows"]))[0]
+    bad = R.verify_box(g["rows"], t)
+    assert bad and all("minutes" in m for m in bad)
+
+
+def test_overtime_is_240_plus_25_per_period_and_points_must_still_match():
+    g = R.parse_player_results(payload(full_box(extra_secs=1500)))[0]       # one overtime: 265 minutes
+    t = R.parse_optic_results(team_results(g["rows"]))[0]
+    assert R.verify_box(g["rows"], t) == []
+    t["scores"]["home"] += 1                                                # one point of difference blocks it
+    assert any("points" in m for m in R.verify_box(g["rows"], t))
 
 
 def test_attach_by_optic_id_then_name_then_traded_player():

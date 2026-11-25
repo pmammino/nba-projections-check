@@ -1,6 +1,7 @@
 """Command line. Run from the repo root:  python -m paper.cli <command> ...
 
-  auto            the one command the scheduler runs (every ~15 min): builds the day's slate,
+  loop            what the workflow runs: `auto` every 5 minutes for ~5.7 hours, publishing after each pass
+  auto            one pass: builds the day's slate,
                   captures whatever is due, grades finished dates, rebuilds ledgers + report.md
   discover        list live NBA markets/books; confirms the ids in markets.py
   check-feeds     first live check of the RotoWire floor/median/ceiling feeds and the fits
@@ -56,6 +57,20 @@ def cmd_auto(a):
     now = datetime.fromisoformat(a.now.replace("Z", "+00:00")) if a.now else datetime.now(timezone.utc)
     errs = auto(a.root, OpticOddsClient(), now=now, overrides=_overrides(a.overrides), n_sims=a.sims,
                 price_model=a.price_model)
+    if errs:
+        sys.exit(1)
+
+
+def cmd_loop(a):
+    """Run `auto` every --every minutes for --minutes (what the workflow runs), publishing after each pass."""
+    from pathlib import Path
+    from .automation import run_loop
+    from .optic import OpticOddsClient
+    from .publish import publish
+    pub = (lambda: publish(Path(a.root))) if a.publish else None
+    passes, errs = run_loop(a.root, OpticOddsClient(), a.minutes, a.every, publish_fn=pub,
+                            overrides=_overrides(a.overrides), n_sims=a.sims, price_model=a.price_model)
+    print(f"loop finished: {passes} passes; last pass {'had errors: ' + '; '.join(errs) if errs else 'was clean'}")
     if errs:
         sys.exit(1)
 
@@ -206,6 +221,11 @@ def main(argv=None):
     au.add_argument("--now", help="override the clock (ISO, UTC) for testing"); au.add_argument("--overrides")
     au.add_argument("--sims", type=int, default=2000)
     au.add_argument("--price-model", default="both", choices=["both", "feeds", "sim"])
+    lp = sub.add_parser("loop"); lp.set_defaults(fn=cmd_loop)
+    lp.add_argument("--minutes", type=float, default=340); lp.add_argument("--every", type=float, default=5)
+    lp.add_argument("--publish", action="store_true", help="commit+push the data branch after every pass")
+    lp.add_argument("--overrides"); lp.add_argument("--sims", type=int, default=2000)
+    lp.add_argument("--price-model", default="both", choices=["both", "feeds", "sim"])
     s = sub.add_parser("slate"); s.set_defaults(fn=cmd_slate)
     s.add_argument("--date", required=True); s.add_argument("--sims", type=int, default=2000)
     c = sub.add_parser("capture"); c.set_defaults(fn=cmd_capture)

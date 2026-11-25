@@ -143,11 +143,22 @@ _TEAM_CHECKS = {
     "field_goals_attempted": lambda r: r["fga"], "free_throws_attempted": lambda r: r["fta"],
     "three_point_field_goals_made": lambda r: r["pt3m"],
 }
+SOFT_TOLERANCE = 2          # a secondary stat may differ from the team line by this much (a live game was 1 assist off)
+MINUTES_TOLERANCE = 1.0     # team minutes must be 240 (+25 per overtime) within this
 
 
-def verify_box(rows, game):
-    """Optic's team totals vs the sum of player lines. Returns mismatches (empty = ok)."""
-    bad = []
+def verify_box_detail(rows, game):
+    """Is this box score COMPLETE? Returns (blockers, notes).
+
+    Blockers stop the date being graded:
+      * a team with no player rows
+      * team points that differ at all from Optic's score (settlement depends on points)
+      * team minutes that are not 240 + 25 per overtime (a missing player who played shows up here,
+        which is a far better completeness test than any single counting stat)
+      * a secondary stat (assists, steals, blocks, FGA, FTA, 3PM) off by more than SOFT_TOLERANCE
+    Notes are small secondary-stat differences, logged but not blocking: a live game's team line said 25
+    assists against 24 in the players, and exact equality on that held grading back indefinitely."""
+    bad, notes = [], []
     for side in ("home", "away"):
         team = game[side]
         mine = [r for r in rows if r["team"] == team]
@@ -158,11 +169,26 @@ def verify_box(rows, game):
         want = game["scores"][side]
         if want is not None and pts != want:
             bad.append(f"{team} points {pts} != {want}")
+        total = sum(r["minutes"] for r in mine)
+        extra = max(0, round((total - 240) / 25))
+        expected = 240 + 25 * extra
+        if abs(total - expected) > MINUTES_TOLERANCE:
+            bad.append(f"{team} minutes {total:.1f} (expected {expected})")
         for key, fn in _TEAM_CHECKS.items():
             want = game["stats"][side].get(key)
-            if want is not None and sum(fn(r) for r in mine) != want:
-                bad.append(f"{team} {key} {sum(fn(r) for r in mine)} != {want}")
-    return bad
+            if want is None:
+                continue
+            got = sum(fn(r) for r in mine)
+            if abs(got - want) > SOFT_TOLERANCE:
+                bad.append(f"{team} {key} {got:g} != {want}")
+            elif got != want:
+                notes.append(f"{team} {key} {got:g} vs team line {want}")
+    return bad, notes
+
+
+def verify_box(rows, game):
+    """The blockers from verify_box_detail (empty = complete)."""
+    return verify_box_detail(rows, game)[0]
 
 
 # ---- Optic id <-> our player_id --------------------------------------------------
