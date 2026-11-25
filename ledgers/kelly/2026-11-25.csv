@@ -1,0 +1,13 @@
+date,persona,slot,player_id,name,team,opp,stat,book,line,side,odds,implied,fair,our_prob,edge,model_edge,p_sharp,n_books,stake_units,scaled_by,bankroll_before,status,actual,pnl_units,close_fair,clv
+2026-11-25,kelly,morning,5896,Brandon Miller,CHA,CHI,pts,hardrock,39.5,over,2500.0,0.0385,0.036,0.1557,0.1172,0.1197,,5,3.0,1.0,100.0,pending,,,,
+2026-11-25,kelly,morning,2811,Kevin Durant,HOU,PHX,pts,betmgm,34.5,over,1450.0,0.0645,0.0603,0.2051,0.1406,0.1448,,6,3.0,1.0,100.0,pending,,,,
+2026-11-25,kelly,morning,4387,Shai Gilgeous-Alexander,OKC,MIN,pts,draftkings,49.5,over,1700.0,0.0556,0.052,0.1747,0.1191,0.1227,,4,3.0,1.0,100.0,pending,,,,
+2026-11-25,kelly,morning,3299,Draymond Green,GSW,SAC,reb,hardrock,10.5,over,2250.0,0.0426,0.0398,0.1307,0.08810000000000001,0.09090000000000001,,2,2.3016,1.0,100.0,pending,,,,
+2026-11-25,kelly,morning,5931,Amen Thompson,HOU,PHX,reb,draftkings,11.5,over,1220.0,0.0758,0.0709,0.2151,0.1393,0.1442,,5,3.0,1.0,100.0,pending,,,,
+2026-11-25,kelly,morning,4405,Jalen Brunson,NYK,CLE,pts,draftkings,39.5,over,1100.0,0.0833,0.0779,0.2276,0.14429999999999998,0.1497,,6,3.0,1.0,100.0,pending,,,,
+2026-11-25,kelly,morning,6967,Brayden Burries,MIL,BKN,pts,fanduel,24.5,over,1399.0,0.0667,0.0624,0.1802,0.1135,0.1178,,6,3.0,1.0,100.0,pending,,,,
+2026-11-25,kelly,morning,3304,Damian Lillard,POR,SAS,ra,betmgm,9.5,over,300.0,0.25,0.2341,0.6744,0.4244,0.4403,,5,3.0,1.0,100.0,pending,,,,
+2026-11-25,kelly,morning,6278,Terrence Shannon Jr.,MIN,OKC,pts,draftkings,24.5,over,1760.0,0.0538,0.0503,0.1432,0.0894,0.0929,,6,2.363,1.0,100.0,pending,,,,
+2026-11-25,kelly,morning,4806,Naz Reid,CHA,CHI,reb,thescore,13.5,over,1100.0,0.0833,0.0779,0.2206,0.13729999999999998,0.1427,,6,3.0,1.0,100.0,pending,,,,
+2026-11-25,kelly,morning,5903,Taylor Hendricks,MEM,LAC,pts,fanduel,14.5,over,558.0,0.152,0.1421,0.4015,0.24950000000000003,0.2594,,6,3.0,1.0,100.0,pending,,,,
+2026-11-25,kelly,morning,4778,Rui Hachimura,LAC,MEM,pts,draftkings,24.5,over,1500.0,0.0625,0.0585,0.1592,0.09670000000000001,0.10070000000000001,,6,2.5787,1.0,100.0,pending,,,,

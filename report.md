@@ -1,18 +1,18 @@
 # NBA paper trading report
 
-_Updated 2026-11-25 02:52Z_
+_Updated 2026-11-25 23:09Z_
 
 ## Personas
 
 | persona | bets | settled | staked | pnl | roi |
 |---|---|---|---|---|---|
-| firehose | 130 | 0 | 130.0 | +0.00 | +0.0% |
-| disciplined | 5 | 0 | 5.0 | +0.00 | +0.0% |
-| shopper | 5 | 0 | 5.0 | +0.00 | +0.0% |
-| kelly | 7 | 0 | 19.0 | +0.00 | +0.0% |
-| budget | 5 | 0 | 10.0 | +0.00 | +0.0% |
-| purist | 5 | 0 | 15.0 | +0.00 | +0.0% |
-| sharp | 4 | 0 | 4.0 | +0.00 | +0.0% |
+| firehose | 884 | 0 | 884.0 | +0.00 | +0.0% |
+| disciplined | 10 | 0 | 10.0 | +0.00 | +0.0% |
+| shopper | 10 | 0 | 10.0 | +0.00 | +0.0% |
+| kelly | 19 | 0 | 53.2 | +0.00 | +0.0% |
+| budget | 10 | 0 | 20.0 | +0.00 | +0.0% |
+| purist | 13 | 0 | 39.0 | +0.00 | +0.0% |
+| sharp | 9 | 0 | 9.0 | +0.00 | +0.0% |
 
 Personas show what a strategy would have *felt* like. Only the filter table below, with
 far more bets, can say whether the simulator is real.
@@ -21,7 +21,7 @@ far more bets, can say whether the simulator is real.
 
 | preset | bets | settled | roi | ±2σ | verdict | CLV beat rate |
 |---|---|---|---|---|---|---|
-| Realistic | 117 | 0 | — | — | too few bets to call | 27% (n=75) |
-| Sharp books | 3 | 0 | — | — | too few bets to call | 0% (n=2) |
-| Ladders | 501 | 0 | — | — | too few bets to call | 48% (n=192) |
-| Everything | 1497 | 0 | — | — | too few bets to call | 23% (n=738) |
+| Realistic | 788 | 0 | — | — | too few bets to call | 27% (n=75) |
+| Sharp books | 17 | 0 | — | — | too few bets to call | 0% (n=2) |
+| Ladders | 3184 | 0 | — | — | too few bets to call | 48% (n=192) |
+| Everything | 15243 | 0 | — | — | too few bets to call | 23% (n=738) |

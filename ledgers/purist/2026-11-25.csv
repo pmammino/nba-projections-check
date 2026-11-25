@@ -1,0 +1,9 @@
+date,persona,slot,player_id,name,team,opp,stat,book,line,side,odds,implied,fair,our_prob,edge,model_edge,p_sharp,n_books,stake_units,scaled_by,bankroll_before,status,actual,pnl_units,close_fair,clv
+2026-11-25,purist,morning,3884,Buddy Hield,CHI,CHA,pa,fanduel,15.5,under,-102.0,0.505,0.4718,0.9428,0.43779999999999997,0.471,,1,3.0,1.0,100.0,pending,,,,
+2026-11-25,purist,morning,6931,Darius Acuff Jr.,SAC,GSW,ra,hardrock,10.5,under,-110.0,0.5238,0.4899,0.9558,0.43199999999999994,0.4659,,7,3.0,1.0,100.0,pending,,,,
+2026-11-25,purist,morning,4833,Charles Bassey,GSW,SAC,pts,betrivers,11.5,under,-117.0,0.5392,0.502,0.9493,0.4101,0.44730000000000003,,4,3.0,1.0,100.0,pending,,,,
+2026-11-25,purist,morning,4774,Ty Jerome,MEM,LAC,pra,hardrock,32.5,under,-105.0,0.5122,0.4797,0.9198,0.40759999999999996,0.44009999999999994,0.4808,7,3.0,1.0,100.0,pending,,,,
+2026-11-25,purist,morning,5264,Isaac Okoro,CHI,CHA,pr,draftkings,12.5,under,-105.0,0.5122,0.4788,0.8978,0.38560000000000005,0.41900000000000004,,7,3.0,1.0,100.0,pending,,,,
+2026-11-25,purist,morning,4414,Landry Shamet,NYK,CLE,pra,fanduel,16.5,under,100.0,0.5,0.4711,0.8853,0.3853,0.41419999999999996,,3,3.0,1.0,100.0,pending,,,,
+2026-11-25,purist,morning,4147,Isaiah Hartenstein,OKC,MIN,ra,caesars,14.5,under,102.0,0.495,0.4621,0.8523,0.35729999999999995,0.39019999999999994,,7,3.0,1.0,100.0,pending,,,,
+2026-11-25,purist,morning,6289,Ajay Mitchell,OKC,MIN,pra,draftkings,24.5,under,-105.0,0.5122,0.4788,0.8653,0.35309999999999997,0.38649999999999995,,7,3.0,1.0,100.0,pending,,,,

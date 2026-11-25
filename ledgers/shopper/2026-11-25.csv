@@ -1,0 +1,6 @@
+date,persona,slot,player_id,name,team,opp,stat,book,line,side,odds,implied,fair,our_prob,edge,model_edge,p_sharp,n_books,stake_units,scaled_by,bankroll_before,status,actual,pnl_units,close_fair,clv
+2026-11-25,shopper,morning,3884,Buddy Hield,CHI,CHA,pa,fanduel,15.5,under,-102.0,0.505,0.4718,0.9428,0.43779999999999997,0.471,,1,1.0,1.0,100.0,pending,,,,
+2026-11-25,shopper,morning,6931,Darius Acuff Jr.,SAC,GSW,ra,hardrock,10.5,under,-110.0,0.5238,0.4899,0.9558,0.43199999999999994,0.4659,,7,1.0,1.0,100.0,pending,,,,
+2026-11-25,shopper,morning,3304,Damian Lillard,POR,SAS,ra,betmgm,9.5,over,300.0,0.25,0.2341,0.6744,0.4244,0.4403,,5,1.0,1.0,100.0,pending,,,,
+2026-11-25,shopper,morning,4833,Charles Bassey,GSW,SAC,pts,betrivers,11.5,under,-117.0,0.5392,0.502,0.9493,0.4101,0.44730000000000003,,4,1.0,1.0,100.0,pending,,,,
+2026-11-25,shopper,morning,4774,Ty Jerome,MEM,LAC,pra,hardrock,32.5,under,-105.0,0.5122,0.4797,0.9198,0.40759999999999996,0.44009999999999994,0.4808,7,1.0,1.0,100.0,pending,,,,
