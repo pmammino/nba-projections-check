@@ -1,6 +1,6 @@
 date,persona,slot,player_id,name,team,opp,stat,book,line,side,odds,implied,fair,our_prob,edge,model_edge,p_sharp,n_books,stake_units,scaled_by,bankroll_before,status,actual,pnl_units,close_fair,clv
-2026-11-24,shopper,morning,6249,Zaccharie Risacher,DAL,DEN,threes,draftkings,0.5,under,170.0,0.3704,0.3476,0.5435,0.17309999999999998,0.19589999999999996,,7,1.0,1.0,100.0,pending,,,,
+2026-11-24,shopper,morning,6548,Cooper Flagg,DAL,DEN,pra,betrivers,38.5,under,-109.0,0.5215,0.4851,0.8758,0.35430000000000006,0.39070000000000005,,2,1.0,1.0,100.0,pending,,,,
+2026-11-24,shopper,morning,3186,Kyrie Irving,DAL,DEN,pa,draftkings,27.5,under,-106.0,0.5146,0.4836,0.8628,0.34820000000000007,0.37920000000000004,,6,1.0,1.0,100.0,pending,,,0.5080953333257684,-0.0065
 2026-11-24,shopper,morning,6925,AJ Dybantsa,WAS,BOS,pts,betrivers,16.5,under,100.0,0.5,0.4646,0.6624,0.1624,0.19779999999999998,0.5192,6,1.0,1.0,100.0,pending,,,,
-2026-11-24,shopper,morning,5204,Naji Marshall,DAL,DEN,pts,fanduel,9.5,under,102.0,0.495,0.4669,0.6499,0.15490000000000004,0.18300000000000005,,7,1.0,1.0,100.0,pending,,,,
 2026-11-24,shopper,morning,4108,Jayson Tatum,BOS,WAS,pts,betrivers,26.5,under,100.0,0.5,0.4646,0.6419,0.14190000000000003,0.1773,0.5485,4,1.0,1.0,100.0,pending,,,,
 2026-11-24,shopper,morning,5159,Desmond Bane,ORL,DET,reb,betrivers,3.5,under,100.0,0.5,0.4646,0.6059,0.1059,0.14129999999999998,0.4581,8,1.0,1.0,100.0,pending,,,,
