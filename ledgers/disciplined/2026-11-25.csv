@@ -1,6 +1,6 @@
 date,persona,slot,player_id,name,team,opp,stat,book,line,side,odds,implied,fair,our_prob,edge,model_edge,p_sharp,n_books,stake_units,scaled_by,bankroll_before,status,actual,pnl_units,close_fair,clv
-2026-11-25,disciplined,morning,3884,Buddy Hield,CHI,CHA,pra,draftkings,19.5,under,-108.0,0.5192,0.4877,0.9518,0.4326,0.46409999999999996,,7,1.0,1.0,100.0,pending,,,,
-2026-11-25,disciplined,morning,3304,Damian Lillard,POR,SAS,ra,draftkings,9.5,over,285.0,0.2597,0.2432,0.6744,0.4147,0.4312,,5,1.0,1.0,100.0,pending,,,,
-2026-11-25,disciplined,morning,6931,Darius Acuff Jr.,SAC,GSW,pra,draftkings,35.5,under,-110.0,0.5238,0.4938,0.9313,0.4075,0.4375,0.4899,8,1.0,1.0,100.0,pending,,,,
-2026-11-25,disciplined,pregame,4774,Ty Jerome,MEM,LAC,pr,draftkings,26.5,under,-104.0,0.5098,0.4776,0.9148,0.4049999999999999,0.4371999999999999,,6,1.0,1.0,100.0,pending,,,,
-2026-11-25,disciplined,morning,4833,Charles Bassey,GSW,SAC,pts,draftkings,11.5,under,-122.0,0.5495,0.5188,0.9493,0.39980000000000004,0.4305,,4,1.0,1.0,100.0,pending,,,,
+2026-11-25,disciplined,morning,3884,Buddy Hield,CHI,CHA,pra,draftkings,19.5,under,-108.0,0.5192,0.4877,0.9518,0.4326,0.46409999999999996,,7,1.0,1.0,100.0,won,17.0,0.9259,,
+2026-11-25,disciplined,morning,3304,Damian Lillard,POR,SAS,ra,draftkings,9.5,over,285.0,0.2597,0.2432,0.6744,0.4147,0.4312,,5,1.0,1.0,100.0,won,10.0,2.85,,
+2026-11-25,disciplined,morning,6931,Darius Acuff Jr.,SAC,GSW,pra,draftkings,35.5,under,-110.0,0.5238,0.4938,0.9313,0.4075,0.4375,0.4899,8,1.0,1.0,100.0,won,35.0,0.9091,,
+2026-11-25,disciplined,pregame,4774,Ty Jerome,MEM,LAC,pr,draftkings,26.5,under,-104.0,0.5098,0.4776,0.9148,0.4049999999999999,0.4371999999999999,,6,1.0,1.0,100.0,won,22.0,0.9615,,
+2026-11-25,disciplined,morning,4833,Charles Bassey,GSW,SAC,pts,draftkings,11.5,under,-122.0,0.5495,0.5188,0.9493,0.39980000000000004,0.4305,,4,1.0,1.0,100.0,won,10.0,0.8197,,
