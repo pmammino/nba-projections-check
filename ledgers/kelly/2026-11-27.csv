@@ -1,0 +1,13 @@
+date,persona,slot,player_id,name,team,opp,stat,book,line,side,odds,implied,fair,our_prob,edge,model_edge,p_sharp,n_books,stake_units,scaled_by,bankroll_before,status,actual,pnl_units,close_fair,clv
+2026-11-27,kelly,morning,2344,LeBron James,PHI,IND,reb,hardrock,12.5,over,2250.0,0.0426,0.0398,0.1617,0.11910000000000001,0.12190000000000001,,3,2.3327,1.0,77.7567,pending,,,,
+2026-11-27,kelly,morning,5230,Jalen Green,PHX,DAL,pts,draftkings,29.5,over,1980.0,0.0481,0.045,0.1597,0.1116,0.11470000000000001,,6,2.2794,1.0,77.7567,pending,,,,
+2026-11-27,kelly,morning,3456,Giannis Antetokounmpo,MIA,NYK,pts,hardrock,44.5,over,2000.0,0.0476,0.0445,0.1577,0.1101,0.11320000000000001,,6,2.2469,1.0,77.7567,pending,,,,
+2026-11-27,kelly,morning,5152,Deni Avdija,POR,GSW,pts,draftkings,39.5,over,1120.0,0.082,0.0767,0.2501,0.16809999999999997,0.1734,,7,2.3327,1.0,77.7567,pending,,,,
+2026-11-27,kelly,morning,5390,Scottie Barnes,TOR,BKN,pts,draftkings,39.5,over,1360.0,0.0685,0.0641,0.2086,0.1401,0.14450000000000002,,6,2.3327,1.0,77.7567,pending,,,,
+2026-11-27,kelly,morning,5710,Christian Braun,DEN,UTA,reb,draftkings,9.5,over,2000.0,0.0476,0.0445,0.1447,0.09709999999999999,0.1002,,5,1.9815,1.0,77.7567,pending,,,,
+2026-11-27,kelly,morning,3029,Jrue Holiday,POR,GSW,pts,fanduel,29.5,over,1698.0,0.0556,0.052,0.1672,0.11159999999999999,0.1152,,6,2.2968,1.0,77.7567,pending,,,,
+2026-11-27,kelly,morning,5158,Tyrese Maxey,PHI,IND,pts,draftkings,39.5,over,1460.0,0.0641,0.06,0.1927,0.1286,0.1327,,6,2.3327,1.0,77.7567,pending,,,,
+2026-11-27,kelly,morning,3574,Julius Randle,BKN,TOR,pts,fanduel,34.5,over,1397.0,0.0668,0.0625,0.1952,0.12840000000000001,0.1327,,6,2.3327,1.0,77.7567,pending,,,,
+2026-11-27,kelly,morning,6927,Kingston Flemings,ATL,BOS,pts,fanduel,19.5,over,1797.0,0.0527,0.0493,0.1512,0.0985,0.1019,,6,2.021,1.0,77.7567,pending,,,,
+2026-11-27,kelly,morning,4780,Tyler Herro,MIL,DET,pts,betmgm,34.5,over,1300.0,0.0714,0.0668,0.2026,0.13119999999999998,0.1358,,6,2.3327,1.0,77.7567,pending,,,,
+2026-11-27,kelly,morning,5221,Jaden McDaniels,MIN,MEM,reb,draftkings,10.5,over,1460.0,0.0641,0.06,0.1772,0.11309999999999999,0.1172,,4,2.3327,1.0,77.7567,pending,,,,

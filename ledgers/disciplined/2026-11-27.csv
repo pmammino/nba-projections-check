@@ -1,0 +1,6 @@
+date,persona,slot,player_id,name,team,opp,stat,book,line,side,odds,implied,fair,our_prob,edge,model_edge,p_sharp,n_books,stake_units,scaled_by,bankroll_before,status,actual,pnl_units,close_fair,clv
+2026-11-27,disciplined,morning,3572,Joel Embiid,PHI,IND,pra,draftkings,36.5,under,-110.0,0.5238,0.4899,0.9578,0.43399999999999994,0.4679,,7,1.0,1.0,100.0,pending,,,,
+2026-11-27,disciplined,morning,5291,Isaiah Joe,DET,MIL,pra,draftkings,21.5,under,-111.0,0.5261,0.4929,0.9298,0.40369999999999995,0.43689999999999996,,6,1.0,1.0,100.0,pending,,,,
+2026-11-27,disciplined,morning,3870,Jakob Poeltl,TOR,BKN,pa,draftkings,11.5,under,-109.0,0.5215,0.4878,0.9198,0.3983,0.43199999999999994,,5,1.0,1.0,100.0,pending,,,,
+2026-11-27,disciplined,morning,6975,Allen Graves,TOR,BKN,pr,draftkings,14.5,under,-105.0,0.5122,0.4788,0.9063,0.3941,0.4275,,5,1.0,1.0,100.0,pending,,,,
+2026-11-27,disciplined,morning,4414,Landry Shamet,NYK,MIA,pra,draftkings,17.5,under,-109.0,0.5215,0.4888,0.9153,0.39380000000000004,0.4265,,5,1.0,1.0,100.0,pending,,,,

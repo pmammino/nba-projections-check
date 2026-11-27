@@ -1,0 +1,9 @@
+date,persona,slot,player_id,name,team,opp,stat,book,line,side,odds,implied,fair,our_prob,edge,model_edge,p_sharp,n_books,stake_units,scaled_by,bankroll_before,status,actual,pnl_units,close_fair,clv
+2026-11-27,purist,morning,3572,Joel Embiid,PHI,IND,pa,fanduel,27.5,under,-102.0,0.505,0.4718,0.9528,0.4478,0.481,,1,2.9809,1.0,99.3624,pending,,,,
+2026-11-27,purist,morning,3870,Jakob Poeltl,TOR,BKN,pra,betmgm,19.5,under,-105.0,0.5122,0.4754,0.9368,0.4246,0.4614,,7,2.9809,1.0,99.3624,pending,,,,
+2026-11-27,purist,morning,5932,Ausar Thompson,DET,MIL,ra,betmgm,14.5,under,105.0,0.4878,0.4554,0.9043,0.4165,0.44889999999999997,,7,2.9809,1.0,99.3624,pending,,,,
+2026-11-27,purist,morning,5291,Isaiah Joe,DET,MIL,pra,caesars,21.5,under,-110.0,0.5238,0.4889,0.9298,0.4059999999999999,0.44089999999999996,,6,2.9809,1.0,99.3624,pending,,,,
+2026-11-27,purist,morning,4414,Landry Shamet,NYK,MIA,pra,caesars,17.5,under,-105.0,0.5122,0.4762,0.9153,0.4031,0.4391,,5,2.9809,1.0,99.3624,pending,,,,
+2026-11-27,purist,morning,6278,Terrence Shannon Jr.,MIN,MEM,pra,caesars,23.5,under,100.0,0.5,0.4694,0.9008,0.40080000000000005,0.43140000000000006,,5,2.9809,1.0,99.3624,pending,,,,
+2026-11-27,purist,morning,6975,Allen Graves,TOR,BKN,pr,draftkings,14.5,under,-105.0,0.5122,0.4788,0.9063,0.3941,0.4275,,5,2.9809,1.0,99.3624,pending,,,,
+2026-11-27,purist,morning,5799,Sidy Cissoko,POR,GSW,ra,caesars,5.5,under,112.0,0.4717,0.4401,0.8638,0.3921,0.4237,,7,2.9809,1.0,99.3624,pending,,,,

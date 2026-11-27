@@ -1,18 +1,18 @@
 # NBA paper trading report
 
-_Updated 2026-11-26 15:35Z_
+_Updated 2026-11-27 23:13Z_
 
 ## Personas
 
 | persona | bets | settled | staked | pnl | roi |
 |---|---|---|---|---|---|
-| firehose | 884 | 750 | 884.0 | -11.71 | -1.3% |
-| disciplined | 10 | 5 | 10.0 | +6.47 | +64.7% |
-| shopper | 10 | 5 | 10.0 | +4.79 | +47.9% |
-| kelly | 19 | 12 | 53.2 | -22.24 | -41.8% |
-| budget | 10 | 5 | 20.0 | +9.51 | +47.6% |
-| purist | 13 | 8 | 39.0 | -0.64 | -1.6% |
-| sharp | 9 | 5 | 9.0 | +0.73 | +8.1% |
+| firehose | 1969 | 750 | 1969.0 | -11.71 | -0.6% |
+| disciplined | 15 | 5 | 15.0 | +6.47 | +43.1% |
+| shopper | 15 | 5 | 15.0 | +4.79 | +31.9% |
+| kelly | 31 | 12 | 80.4 | -22.24 | -27.7% |
+| budget | 15 | 5 | 30.0 | +9.51 | +31.7% |
+| purist | 21 | 8 | 62.8 | -0.64 | -1.0% |
+| sharp | 14 | 5 | 14.0 | +0.73 | +5.2% |
 
 Personas show what a strategy would have *felt* like. Only the filter table below, with
 far more bets, can say whether the simulator is real.
@@ -21,10 +21,10 @@ far more bets, can say whether the simulator is real.
 
 | preset | bets | settled | roi | ±2σ | verdict | CLV beat rate |
 |---|---|---|---|---|---|---|
-| Realistic | 788 | 667 | -3.3% | 7.9% | indistinguishable from zero | 27% (n=75) |
-| Sharp books | 17 | 14 | -6.9% | 51.7% | too few bets to call | 0% (n=2) |
-| Ladders | 3184 | 2668 | -10.3% | 9.1% | negative | 48% (n=192) |
-| Everything | 15243 | 13698 | -5.3% | 3.8% | negative | 23% (n=738) |
+| Realistic | 1729 | 667 | -3.3% | 7.9% | indistinguishable from zero | 27% (n=75) |
+| Sharp books | 34 | 14 | -6.9% | 51.7% | too few bets to call | 0% (n=2) |
+| Ladders | 6999 | 2668 | -10.3% | 9.1% | negative | 48% (n=192) |
+| Everything | 32773 | 13698 | -5.3% | 3.8% | negative | 23% (n=738) |
 
 ## Is the feed's floor/ceiling calibrated?
 
